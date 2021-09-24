@@ -6,16 +6,33 @@ output: html_document
 ```{r setup, include=FALSE}
 rm(list=ls())
 
+# Stepwise logistic regression
+library(MASS)
+library(caret)
+library(glmnet)
+library(tidymodels)
+library(recipes)
 library(httr)
 library(dplyr)
 library(ggrepel)
 library(tidyverse)
 library (ggplot2)
+library(themis)
 # test skewness
 library(moments)
+
 #bocox transformation
 library(EnvStats)
 library(corrplot)
+
+#correlation table
+library(reshape2)
+
+library(doParallel)
+
+#PCA
+library(factoextra)
+library(pcaPP)
 ```
 
 
@@ -35,6 +52,7 @@ bank_failures_2 <- bank_failures_1 %>%
 
 
 bank_failures_1
+head(bank_failures_1)
 
 #06|07|08
 ```
@@ -53,7 +71,6 @@ table(Q12000$bkclass)
 Q12000$date <- "1Q2000"
 Q12000_1 <- Q12000 %>%
         select(!c(docket:idntigr))
-head(Q12000_1)
 
 
 #Q2 2000
@@ -61,7 +78,6 @@ Q22000 <- read.csv("2000Q2.csv")
 Q22000$date <- "2Q2000"
 Q22000_1 <- Q22000 %>%
         select(!c(docket:idntigr))
-head(Q22000_1)
 
 
 
@@ -71,16 +87,11 @@ Q32000$date <- "3Q2000"
 Q32000_1 <- Q32000 %>%
         select(!c(docket:idntigr))
 
-head(Q32000_1)
-
-
 #Q4 2000
 Q42000 <- read.csv("2000Q4.csv")
 Q42000$date <- "4Q2000"
 Q42000_1 <- Q42000 %>%
         select(!c(docket:idntigr))
-
-head(Q42000_1)
 
 
 
@@ -91,8 +102,6 @@ Q12001$date <- "1Q2001"
 Q12001_1 <- Q12001 %>%
         select(!c(docket:idntigr))
 
-head(Q12001_1)
-
 
 #Q2 2001
 Q22001 <- read.csv("2001Q2.csv")
@@ -100,8 +109,6 @@ Q22001 <- read.csv("2001Q2.csv")
 Q22001$date <- "2Q2001"
 Q22001_1 <- Q22001 %>%
         select(!c(docket:idntigr))
-
-head(Q22001_1)
 
 
 #Q3 2001
@@ -111,8 +118,6 @@ Q32001$date <- "3Q2001"
 Q32001_1 <- Q32001 %>%
         select(!c(docket:idntigr))
 
-head(Q32001_1)
-
 
 #Q4 2001
 Q42001 <- read.csv("2001Q4.csv")
@@ -120,8 +125,6 @@ Q42001 <- read.csv("2001Q4.csv")
 Q42001$date <- "4Q2001"
 Q42001_1 <- Q42001 %>%
         select(!c(docket:idntigr))
-
-head(Q42001_1)
 
 
 #Q1 2002
@@ -131,8 +134,6 @@ Q12002$date <- "1Q2002"
 Q12002_1 <- Q12002 %>%
         select(!c(docket:idntigr))
 
-head(Q12002_1)
-
 
 #Q2 2002
 Q22002 <- read.csv("2002Q2.csv")
@@ -141,17 +142,12 @@ Q22002$date <- "2Q2002"
 Q22002_1 <- Q22002 %>%
         select(!c(docket:idntigr))
 
-head(Q22002_1)
-
-
 #Q3 2002
 Q32002 <- read.csv("2002Q3.csv")
 
 Q32002$date <- "3Q2002"
 Q32002_1 <- Q32002 %>%
         select(!c(docket:idntigr))
-
-head(Q32002_1)
 
 
 #Q4 2002
@@ -161,8 +157,6 @@ Q42002$date <- "4Q2002"
 Q42002_1 <- Q42002 %>%
         select(!c(docket:idntigr))
 
-head(Q42002_1)
-
 
 #Q1 2003
 Q12003 <- read.csv("2003Q1.csv")
@@ -170,8 +164,6 @@ Q12003 <- read.csv("2003Q1.csv")
 Q12003$date <- "1Q2003"
 Q12003_1 <- Q12003 %>%
         select(!c(docket:idntigr))
-
-head(Q12003_1)
 
 
 #Q2 2003
@@ -181,8 +173,6 @@ Q22003$date <- "2Q2003"
 Q22003_1 <- Q22003 %>%
         select(!c(docket:idntigr))
 
-head(Q22003_1)
-
 
 #Q3 2003
 Q32003 <- read.csv("2003Q3.csv")
@@ -190,8 +180,6 @@ Q32003 <- read.csv("2003Q3.csv")
 Q32003$date <- "3Q2003"
 Q32003_1 <- Q32003 %>%
         select(!c(docket:idntigr))
-
-head(Q32003_1)
 
 
 #Q4 2003
@@ -201,8 +189,6 @@ Q42003$date <- "4Q2003"
 Q42003_1 <- Q42003 %>%
         select(!c(docket:idntigr))
 
-head(Q42003_1)
-
 
 #Q1 2004
 Q12004 <- read.csv("2004Q1.csv")
@@ -210,8 +196,6 @@ Q12004 <- read.csv("2004Q1.csv")
 Q12004$date <- "1Q2004"
 Q12004_1 <- Q12004 %>%
         select(!c(docket:idntigr))
-
-head(Q12004_1)
 
 
 #Q2 2004
@@ -221,9 +205,6 @@ Q22004$date <- "2Q2004"
 Q22004_1 <- Q22004 %>%
         select(!c(docket:idntigr))
 
-head(Q22004_1)
-
-
 #Q3 2004
 Q32004 <- read.csv("2004Q3.csv")
 
@@ -231,17 +212,12 @@ Q32004$date <- "3Q2004"
 Q32004_1 <- Q32004 %>%
         select(!c(docket:idntigr))
 
-head(Q32004_1)
-
-
 #Q4 2004
 Q42004 <- read.csv("2004Q4.csv")
 
 Q42004$date <- "4Q2004"
 Q42004_1 <- Q42004 %>%
         select(!c(docket:idntigr))
-
-head(Q42004_1)
 
 
 #Q1 2005
@@ -251,17 +227,12 @@ Q12005$date <- "1Q2005"
 Q12005_1 <- Q12005 %>%
         select(!c(docket:idntigr))
 
-head(Q12005_1)
-
-
 #Q2 2005
 Q22005 <- read.csv("2005Q2.csv")
 
 Q22005$date <- "2Q2005"
 Q22005_1 <- Q22005 %>%
         select(!c(docket:idntigr))
-
-head(Q22005_1)
 
 
 #Q3 2005
@@ -271,8 +242,6 @@ Q32005$date <- "3Q2005"
 Q32005_1 <- Q32005 %>%
         select(!c(docket:idntigr))
 
-head(Q32005_1)
-
 
 #Q4 2005
 Q42005 <- read.csv("2005Q4.csv")
@@ -280,8 +249,6 @@ Q42005 <- read.csv("2005Q4.csv")
 Q42005$date <- "4Q2005"
 Q42005_1 <- Q42005 %>%
         select(!c(docket:idntigr))
-
-head(Q42005_1)
 
 
 #Q1 2006
@@ -291,8 +258,6 @@ Q12006$date <- "1Q2006"
 Q12006_1 <- Q12006 %>%
         select(!c(docket:idntigr))
 
-head(Q12006_1)
-
 
 #Q2 2006
 Q22006 <- read.csv("2006Q2.csv")
@@ -301,8 +266,6 @@ Q22006$date <- "2Q2006"
 Q22006_1 <- Q22006 %>%
         select(!c(docket:idntigr))
 
-head(Q22006_1)
-
 
 #Q3 2006
 Q32006 <- read.csv("2006Q3.csv")
@@ -310,17 +273,12 @@ Q32006 <- read.csv("2006Q3.csv")
 Q32006$date <- "3Q2006"
 Q32006_1 <- Q32006 %>%
         select(!c(docket:idntigr))
-
-head(Q32006_1)
-
 #Q4 2006
 Q42006 <- read.csv("2006Q4.csv")
 
 Q42006$date <- "4Q2006"
 Q42006_1 <- Q42006 %>%
         select(!c(docket:idntigr))
-
-head(Q42006_1)
 
 
 #Q1 2007
@@ -330,8 +288,6 @@ Q12007$date <- "1Q2007"
 Q12007_1 <- Q12007 %>%
         select(!c(docket:idntigr))
 
-head(Q12007_1)
-
 
 #Q2 2007
 Q22007 <- read.csv("2007Q2.csv")
@@ -339,8 +295,6 @@ Q22007 <- read.csv("2007Q2.csv")
 Q22007$date <- "2Q2007"
 Q22007_1 <- Q22007 %>%
         select(!c(docket:idntigr))
-
-head(Q22007_1)
 
 
 #Q3 2007
@@ -350,8 +304,6 @@ Q32007$date <- "3Q2007"
 Q32007_1 <- Q32007 %>%
         select(!c(docket:idntigr))
 
-head(Q32007_1)
-
 
 #Q4 2007
 Q42007 <- read.csv("2007Q4.csv")
@@ -360,17 +312,12 @@ Q42007$date <- "4Q2007"
 Q42007_1 <- Q42007 %>%
         select(!c(docket:idntigr))
 
-head(Q42007_1)
-
-
 #Q1 2008
 Q12008 <- read.csv("2008Q1.csv")
 
 Q12008$date <- "1Q2008"
 Q12008_1 <- Q12008 %>%
         select(!c(docket:idntigr))
-
-head(Q12008_1)
 
 
 #Q2 2008
@@ -380,8 +327,6 @@ Q22008$date <- "2Q2008"
 Q22008_1 <- Q22008 %>%
         select(!c(docket:idntigr))
 
-head(Q22008_1)
-
 
 #Q3 2008
 Q32008 <- read.csv("2008Q3.csv")
@@ -389,8 +334,6 @@ Q32008 <- read.csv("2008Q3.csv")
 Q32008$date <- "3Q2008"
 Q32008_1 <- Q32008 %>%
         select(!c(docket:idntigr))
-
-head(Q32008_1)
 
 
 #Q4 2008
@@ -400,8 +343,6 @@ Q42008$date <- "4Q2008"
 Q42008_1 <- Q42008 %>%
         select(!c(docket:idntigr))
 
-head(Q42008_1)
-
 
 #Q1 2009
 Q12009 <- read.csv("2009Q1.csv")
@@ -409,8 +350,6 @@ Q12009 <- read.csv("2009Q1.csv")
 Q12009$date <- "1Q2009"
 Q12009_1 <- Q12009 %>%
         select(!c(docket:idntigr))
-
-head(Q12009_1)
 
 
 #Q2 2009
@@ -420,19 +359,15 @@ Q22009$date <- "2Q2009"
 Q22009_1 <- Q22009 %>%
         select(!c(docket:idntigr))
 
-head(Q22009_1)
-
 
 #Q3 2009
 Q32009 <- read.csv("2009Q3.csv")
-head(Q32009)
+
 
 
 Q32009$date <- "3Q2009"
 Q32009_1 <- Q32009 %>%
         select(!c(docket:idntigr))
-
-head(Q32009_1)
 
 
 #Q4 2009
@@ -442,8 +377,6 @@ Q42009$date <- "4Q2009"
 Q42009_1 <- Q42009 %>%
         select(!c(docket:idntigr))
 
-head(Q42009_1)
-
 
 #Q1 2010
 Q12010 <- read.csv("2010Q1.csv")
@@ -451,9 +384,6 @@ Q12010 <- read.csv("2010Q1.csv")
 Q12010$date <- "1Q2010"
 Q12010_1 <- Q12010 %>%
         select(!c(docket:idntigr))
-
-head(Q12010_1)
-
 #Q2 2010
 Q22010 <- read.csv("2010Q2.csv")
 
@@ -461,17 +391,12 @@ Q22010$date <- "2Q2010"
 Q22010_1 <- Q22010 %>%
         select(!c(docket:idntigr))
 
-head(Q22010_1)
-
-
 #Q3 2010
 Q32010 <- read.csv("2010Q3.csv")
 
 Q32010$date <- "3Q2010"
 Q32010_1 <- Q32010 %>%
         select(!c(docket:idntigr))
-
-head(Q32010_1)
 
 
 #Q4 2010
@@ -481,8 +406,6 @@ Q42010$date <- "4Q2010"
 Q42010_1 <- Q42010 %>%
         select(!c(docket:idntigr))
 
-head(Q42010_1)
-
 
 #Q1 2011
 Q12011 <- read.csv("2011Q1.csv")
@@ -490,8 +413,6 @@ Q12011 <- read.csv("2011Q1.csv")
 Q12011$date <- "1Q2011"
 Q12011_1 <- Q12011 %>%
         select(!c(docket:idntigr))
-
-head(Q12011_1)
 
 
 #Q2 2011
@@ -501,8 +422,6 @@ Q22011$date <- "2Q2011"
 Q22011_1 <- Q22011 %>%
         select(!c(docket:idntigr))
 
-head(Q22011_1)
-
 
 #Q3 2011
 Q32011 <- read.csv("2011Q3.csv")
@@ -510,8 +429,6 @@ Q32011 <- read.csv("2011Q3.csv")
 Q32011$date <- "3Q2011"
 Q32011_1 <- Q32011 %>%
         select(!c(docket:idntigr))
-
-head(Q32011_1)
 
 
 #Q4 2011
@@ -521,8 +438,6 @@ Q42011$date <- "4Q2011"
 Q42011_1 <- Q42011 %>%
         select(!c(docket:idntigr))
 
-head(Q42011_1)
-
 
 #Q1 2012
 Q12012 <- read.csv("2012Q1.csv")
@@ -530,8 +445,6 @@ Q12012 <- read.csv("2012Q1.csv")
 Q12012$date <- "1Q2012"
 Q12012_1 <- Q12012 %>%
         select(!c(docket:idntigr))
-
-head(Q12012_1)
 
 
 #Q2 2012
@@ -541,8 +454,6 @@ Q22012$date <- "2Q2012"
 Q22012_1 <- Q22012 %>%
         select(!c(docket:idntigr))
 
-head(Q22012_1)
-
 
 #Q3 2012
 Q32012 <- read.csv("2012Q3.csv")
@@ -550,8 +461,6 @@ Q32012 <- read.csv("2012Q3.csv")
 Q32012$date <- "3Q2012"
 Q32012_1 <- Q32012 %>%
         select(!c(docket:idntigr))
-
-head(Q32012_1)
 
 
 #Q4 2012
@@ -562,8 +471,6 @@ Q42012_1 <- Q42012 %>%
         select(!c(docket:idntigr)) %>%
         transform(astempm = as.numeric(astempm))
 
-head(Q42012_1)
-
 
 #Q1 2013
 Q12013 <- read.csv("2013Q1.csv")
@@ -573,8 +480,6 @@ Q12013$date <- "1Q2013"
 Q12013_1 <- Q12013 %>%
         select(!c(docket:idntigr))
 
-head(Q12013_1)
-
 
 #Q2 2013
 Q22013 <- read.csv("2013Q2.csv")
@@ -582,8 +487,6 @@ Q22013 <- read.csv("2013Q2.csv")
 Q22013$date <- "2Q2013"
 Q22013_1 <- Q22013 %>%
         select(!c(docket:idntigr))
-
-head(Q22013_1)
 
 
 #Q3 2013
@@ -593,8 +496,6 @@ Q32013$date <- "3Q2013"
 Q32013_1 <- Q32013 %>%
         select(!c(docket:idntigr))
 
-head(Q32013_1)
-
 
 #Q4 2013
 Q42013 <- read.csv("2013Q4.csv")
@@ -603,17 +504,12 @@ Q42013$date <- "4Q2013"
 Q42013_1 <- Q42013 %>%
         select(!c(docket:idntigr))
 
-head(Q42013_1)
-
-
 #Q1 2014
 Q12014 <- read.csv("2014Q1.csv")
 
 Q12014$date <- "1Q2014"
 Q12014_1 <- Q12014 %>%
         select(!c(docket:idntigr))
-
-head(Q12014_1)
 
 #Q2 2014 
 Q22014 <- read.csv("2014Q2.csv")
@@ -622,16 +518,12 @@ Q22014$date <- "2Q2014"
 Q22014_1 <- Q22014 %>%
         select(!c(docket:idntigr))
 
-head(Q22014_1)
-
 #Q3 2014
 Q32014 <- read.csv("2014Q3.csv")
 
 Q32014$date <- "3Q2014"
 Q32014_1 <- Q32014 %>%
         select(!c(docket:idntigr))
-
-head(Q32014_1)
 
 
 #Q4 2014
@@ -641,14 +533,12 @@ Q42014$date <- "4Q2014"
 Q42014_1 <- Q42014 %>%
         select(!c(docket:idntigr))
 
-head(Q42014_1)
-
 
 ############################
 #Joined Datasets
 
 combined_quaterly_data <- bind_rows(Q12006_1, Q22006_1, Q32006_1, Q42006_1, Q12007_1, Q22007_1, Q32007_1, Q42007_1, Q12008_1, Q22008_1, Q32008_1, Q42008_1, Q12009_1, Q22009_1, Q32009_1, Q42009_1, Q12010_1, Q22010_1, Q32010_1, Q42010_1, Q12011_1, Q22011_1, Q32011_1, Q42011_1, Q12012_1, Q22012_1, Q32012_1, Q42012_1, Q12013_1, Q22013_1, Q32013_1, Q42013_1, Q12014_1, Q22014_1, Q32014_1, Q42014_1)
-head(combined_quaterly_data)
+
 
 #Q12000_1, Q22000_1, Q32000_1, Q42000_1, Q12001_1, Q22001_1, Q32001_1, Q42001_1, Q12002_1, Q22002_1, Q32002_1, Q42002_1, Q12003_1, Q22003_1, Q32003_1, Q42003_1, Q12004_1, Q22004_1, Q32004_1, Q42004_1, Q12005_1, Q22005_1, Q32005_1, Q42005_1, Q12006_1, Q22006_1, Q32006_1, Q42006_1, Q12007_1, Q22007_1, Q32007_1, Q42007_1,
 ```
@@ -685,8 +575,6 @@ combined_quaterly_data %>%
         filter(solvency == 0) %>%
         summarise_each(funs(100*mean(is.na(.))))
 
-#remove columns with above 5% missing 
-
 combined_quaterly_data_2 <- combined_quaterly_data %>%
         select(!c(rbct1cer, cblrind, idt1cer, idt1rwajr, iderncvr, lnresncr, rbc1rwaj, ernastr, elnantr, elnatry))
 
@@ -695,8 +583,16 @@ combined_quaterly_data_2.1 <- combined_quaterly_data_2 %>%
         group_by(cert) %>%
         na.omit()
 
+combined_quaterly_data_2.1$solvency <- as.factor(combined_quaterly_data_2.1$solvency)
+
+class(combined_quaterly_data_2.1$solvency)
 unique(combined_quaterly_data_2$cert)
 unique(combined_quaterly_data_2.1$cert)
+head(combined_quaterly_data_2.1)
+
+#log transformation 
+#combined_quaterly_data_2.1[,26:29] <- log(combined_quaterly_data_2.1[,26:29])
+#head(combined_quaterly_data_2.1)
 ```
 
 
@@ -756,9 +652,15 @@ eff$DATE <- quaters
 
 combined_quaterly_data_2.1 <- left_join(combined_quaterly_data_2.1, eff, by = "DATE") 
 
-head(combined_quaterly_data_2.1)
-colSums(is.na(combined_quaterly_data_2.1))
+#combined_quaterly_data_2.1$scaled_asset5 <- scale(combined_quaterly_data_2.1$asset5) 
+#combined_quaterly_data_2.1$scaled_ernast5 <- scale(combined_quaterly_data_2.1$ernast5) 
+#combined_quaterly_data_2.1$scaled_lnlsgr5 <- scale(combined_quaterly_data_2.1$lnlsgr5) 
+#combined_quaterly_data_2.1$scaled_eq5 <- scale(combined_quaterly_data_2.1$eq5) 
 
+#combined_quaterly_data_2.1 <- combined_quaterly_data_2.1 %>%
+#        select(!c(asset5, ernast5, lnlsgr5, eq5))
+
+head(combined_quaterly_data_2.1)
 ```
 
 Marcoeconomic indcators
@@ -798,23 +700,6 @@ private sector credit growth
 - ernast5  = Average Earning Assets 
 - lnlsgr5  = Average Total Loans
 
-# Distribution of $ denominated variables
-```{r}
-
-ATA <-  ggplot(combined_quaterly_data_2.1, aes(x =  cert, y = asset5)) + 
-        geom_point()
-ATA
-```
-
-```{r}
-#
-# Adding log transformations for skewed Average Total Assets data
-ATA_lg10 <-  ggplot(combined_quaterly_data_2.1, aes(x =  cert, y = asset5)) + 
-        geom_point() + scale_y_log10() 
-ATA_lg10 
-
-skewness(combined_quaterly_data_2.1$asset5)
-```
 
 
 #Lag variables function
@@ -952,19 +837,19 @@ colnames(combined_quaterly_data_L24)[219:226] <- paste("rbcrwaj", colnames(combi
 
 # asset5 lag
 combined_quaterly_data_L25 <- lags(combined_quaterly_data_L24, asset5 )
-colnames(combined_quaterly_data_L25)[227:234] <- paste("asset5", colnames(combined_quaterly_data_L25[,c(227:234)]), sep = "_")
+colnames(combined_quaterly_data_L25)[227:234] <- paste("scaled_asset5", colnames(combined_quaterly_data_L25[,c(227:234)]), sep = "_")
 
 # ernast5 lag
 combined_quaterly_data_L26 <- lags(combined_quaterly_data_L25, ernast5 )
-colnames(combined_quaterly_data_L26)[235:242] <- paste("ernast5", colnames(combined_quaterly_data_L26[,c(235:242)]), sep = "_")
+colnames(combined_quaterly_data_L26)[235:242] <- paste("scaled_ernast5", colnames(combined_quaterly_data_L26[,c(235:242)]), sep = "_")
 
 # eq5 lag
 combined_quaterly_data_L27 <- lags(combined_quaterly_data_L26, eq5 )
-colnames(combined_quaterly_data_L27)[243:250] <- paste("eq5", colnames(combined_quaterly_data_L27[,c(243:250)]), sep = "_")
+colnames(combined_quaterly_data_L27)[243:250] <- paste("scaled_eq5", colnames(combined_quaterly_data_L27[,c(243:250)]), sep = "_")
 
 # lnlsgr5 lag
 combined_quaterly_data_L28 <- lags(combined_quaterly_data_L27, lnlsgr5 )
-colnames(combined_quaterly_data_L28)[251:258] <- paste("lnlsgr5", colnames(combined_quaterly_data_L28[,c(251:258)]), sep = "_")
+colnames(combined_quaterly_data_L28)[251:258] <- paste("scaled_lnlsgr5", colnames(combined_quaterly_data_L28[,c(251:258)]), sep = "_")
 
 # GDP% lag
 combined_quaterly_data_L29 <- lags(combined_quaterly_data_L28, GDP )
@@ -978,34 +863,360 @@ colnames(combined_quaterly_data_L30)[267:274] <- paste("CPI", colnames(combined_
 combined_quaterly_data_L31 <- lags(combined_quaterly_data_L30, FEDFUNDS )
 colnames(combined_quaterly_data_L31)[275:282] <- paste("FEDFUNDS", colnames(combined_quaterly_data_L31[,c(275:282)]), sep = "_")
 
-colnames(combined_quaterly_data_L31)
+combined_quaterly_data_FL <- combined_quaterly_data_L31 %>%
+       group_by(cert) %>%
+       na.omit()
+
+
+
+combined_quaterly_data_FL %>%
+        filter(cert == 57899)
+```
+
+
+
+
+# Setting up split between out of time validation and in time train/test
+```{r}
+#combined_quaterly_data_FL <- combined_quaterly_data_FL %>%
+#        select(!DATE)
+#head(combined_quaterly_data_FL)
+
+#Out of time validation set
+outoftime <- combined_quaterly_data_FL[grepl(c("2014|2013"), combined_quaterly_data_FL$DATE),]
+outoftime <- outoftime %>%
+        ungroup(cert) %>%
+        select(!c(DATE, cert))
+
+
+head(outoftime)
+#outoftime <- combined_quaterly_data_2.1[grepl(c("2014|2013"), combined_quaterly_data_2.1$DATE),]
+# Train/Test set
+TT <- combined_quaterly_data_FL[!grepl(c("2014|2013"), combined_quaterly_data_FL$DATE),]
+TT <- TT %>%
+        ungroup(cert) %>%
+        select(!c(DATE, cert))
+#TT <- combined_quaterly_data_2.1[!grepl(c("2014|2013"), combined_quaterly_data_2.1$DATE),]
+
+``` 
+
+
+#undersampling techniques. Train test split
+```{R}
+
+train.index <- createDataPartition(TT$solvency, p = .8, list = FALSE)
+
+step_train <- TT[train.index,]
+step_test <- TT[-train.index,]
+
+#Figure out clean way to do this
+#table(step_train$solvency)
+#3090/118576
+
+#3090*10
+#30900/118576
+
+#15655
+#15655/118576 = .132025
+# under sampled majority class so that minority class is 10%
+short_0 <- step_train %>%
+        filter(solvency == 0) %>%
+        sample_frac(.2605924)
+
+short_1 <- step_train %>%
+        filter(solvency == 1)
+
+short_train_10 <- rbind(short_0, short_1)
+table(short_train_10$solvency)
+
+
+#
+```
+
+
+# Test cases
+
+
+
+
+#k fold validation
+```{r}
+set.seed(111)
+start.time <- proc.time()
+
+
+lr_recipe <-
+        recipe(solvency ~., data = short_train_10) %>%
+        prep
+
+rs <- vfold_cv(short_train_10, repeats = 10, strata = solvency)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet")
+wf <- workflow() %>%
+        add_recipe(lr_recipe) %>%
+        remove_formula() %>%
+        add_formula(solvency ~.)
+my_grid <- grid_regular(penalty(), mixture())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = my_grid, metrics = metric_set(roc_auc))
+most_accurate <- results %>%
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = short_train_10)
+baked <- bake(lr_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+?grid_regular
+```
+
+
+# Bootstrap
+```{r}
+
+# check stratufued bootstrapping
+#cl <- makePSOCKcluster(4)
+#registerDoParallel(cl)
+
+start.time <- proc.time()
+
+
+
+lr_recipe <-
+        recipe(solvency ~., data = short_train_10) %>%
+        prep
+
+rs <- bootstraps(short_train_10, times = 10, strata = solvency, maxit = 500000)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet")
+wf <- workflow() %>%
+        add_recipe(lr_recipe) %>%
+        remove_formula() %>%
+        add_formula(solvency ~.)
+my_grid <- grid_regular(penalty(), mixture())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = my_grid,  control = control_grid(save_pred = TRUE), metrics = metric_set(roc_auc))
+most_accurate <- results %>%
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = short_train_10)
+baked <- bake(lr_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+#stopCluster(cl)
+
 
 
 ```
 
 
+
+# smote Undersample so it is even
+```{r}
+start.time <- proc.time()
+
+lr_recipe <-
+        recipe(solvency ~., data = step_train) %>% 
+        step_smote(solvency) %>%
+        prep
+
+rs <- vfold_cv(step_train, repeats = 10, strata = solvency)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet") 
+wf <- workflow() %>%
+        add_recipe(lr_recipe) %>%
+        remove_formula() %>%
+        add_formula(solvency ~.)
+my_grid <- grid_regular(penalty(), mixture())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = my_grid,  control = control_grid(save_pred = TRUE), metrics = metric_set(roc_auc))
+most_accurate <- results %>% 
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = step_train)
+baked <- bake(lr_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+
+predicted_1 <- predicted %>%
+        select(".pred_1", "solvency")
+dim(predicted_1)
+roc_auc(predicted_1, ".pred_1")
+predicted$.
+?roc_auc
+
+class(predicted)
+lr_recipe
+# Get the predicted values for each observation
+predicted <- step_test %>%   
+        bind_cols(predict( glmnet_fit, step_test)) %>%
+        bind_cols(predict(glmnet_fit, step_test, type = "prob"))
+predicted[, 283]
+
+# ROC_AUC curve
+predicted %>%
+        roc_auc(solvency, .pred_1)
+
+roc_data <- tibble("auc"= roc_auc(predicted, solvency, .pred_1) %>%
+                           select(.estimate) %>%
+                           unnest(everything()) %>%
+                           pivot_longer(everything(), names_to = "metric", values_to = "values") %>%
+                           mutate(model = "pred_only")
+                   
+head(roc_data)
+predicted %>%
+        roc_curve(solvency, .pred_1) %>%
+        ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+                       geom_path() +
+                       geom_abline(lty = 3) +
+                       coord_equal() +
+                       theme_classic()
+  
+               
+               
+               
+predicted %>%
+        roc_curve(solvency, .pred_1) %>%
+        autoplot()
+
+
+
+# Train data
+predicted <- step_test %>%
+        bind_cols(predict( final, step_train)) %>%
+        bind_cols(predict(final, step_train, type = "prob"))
+
+
+
+predicted
+predicted[, 280:283]
+?predict                            
+```
+
+```{r}
+
+
+
+
+
+```
+
+
+
+#PCA
+```{r}
+combined_quaterly_data_T <- combined_quaterly_data_FL %>%
+        ungroup(cert) %>%
+        select(!c(DATE)) 
+combined_quaterly_data_T$solvency <- as.numeric(combined_quaterly_data_T$solvency)
+
+
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+start.time <- proc.time()
+
+robust <- pcaPP::PCAproj(combined_quaterly_data_T, scale = "sd", center = "mean")
+factoextra::fviz_pca_biplot(robust) + ggtitle("Robust PCA")
+fviz_eig(robust)
+
+stop.time <- proc.time() 
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+# Not roboust PCA
+regular <- prcomp(combined_quaterly_data_T, scale. = TRUE, center = TRUE)
+factoextra::fviz_pca_biplot(regular) + ggtitle("Not robust PCA")
+
+detectCores()
+```
+
+
+
+
+
+
+
+
+
+# Random Forest
+```{r}
+rf_recipe <-
+        recipe(solvency ~., data = short_train_10) %>%
+        prep
+
+rs <- bootstraps(short_train_10, times = 10, maxit = 500000)
+tune_spec <- rand_forest(trees = tune(), mtry = tune(), min_n = tune(), mode = "classification") %>%
+        set_engine("ranger")
+wf <- workflow() %>%
+        add_recipe(rf_recipe) %>%
+        remove_formula() %>%
+        add_formula(solvency ~.)
+my_grid <- grid_regular(trees(), mtry(), min_n())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = my_grid, metrics = metric_set(roc_auc))
+most_accurate <- results %>%
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = short_train_10)
+baked <- bake(rf_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+```
+
+
+
+
+# Extra code
 # Correlation
 ```{r}
-combined_quaterly_data_L31.2 <-  combined_quaterly_data_L31[!grepl(c("06|07"),combined_quaterly_data_L31$DATE),]
+# correlation tests
+test <- combined_quaterly_data_2.1 %>%
+        select(!c(DATE))
 
-dim(combined_quaterly_data_L31.2)
+test$solvency <- as.numeric(combined_quaterly_data_2.1$solvency)
 
-combined_quaterly_data_FL <- combined_quaterly_data_L31 %>%
-        group_by(cert) %>%
-        na.omit()
-
-dim(combined_quaterly_data_FL)
-
-
-data.cor <- combined_quaterly_data_L31 %>%
-        select(!c(cert,DATE))
-cor(data.cor)
-
-?rquery.cormat
+corr.d <- cor(test)
+corr.d[ lower.tri( corr.d, diag = TRUE ) ] <- NA
+corrplot( corr.d, type = "upper", diag = FALSE )
 
 
+# sort pairs of correlated variables
+m <- melt( corr.d )
+m <- m[order(- abs(m$value)), ]
+# get rid of NAs
+m <- na.omit(m)
+# view the highest correlated: rho > 0.5
+(m[ which( m$value > 0.5 ), ])
 
-colSums(is.na(combined_quaterly_data_FL))
 
-head(combined_quaterly_data_FL)
+head(combined_quaterly_data_2.1)
+
 ```
+
+
