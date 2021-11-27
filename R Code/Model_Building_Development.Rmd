@@ -1,0 +1,261 @@
+---
+title: "without lags"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+rm(list=ls())
+
+
+library(dplyr)
+library(tidymodels)
+library(ggrepel)
+library(ggplot2)
+library(recipes)
+library(themis)
+library(workflowsets)
+library(knitr)
+library(caret)
+library(ranger)
+
+library(vip)
+library(moments)
+
+library(doParallel)
+library(forcats)
+
+```
+
+ 
+
+# Read in Cleaned Data Set
+```{R}
+
+combined_quaterly_data_1 <- read.csv("combined_quaterly_data_1.csv")
+combined_quaterly_data_1$solvency <- as.factor(combined_quaterly_data_1$solvency)
+head(combined_quaterly_data_1)
+
+```
+
+# Train Test Split | 2 Year Out of Time Split
+```{r}
+#Out of time validation set 
+outoftime <- combined_quaterly_data_1[grepl(c("2014|2013"), combined_quaterly_data_1$date),]
+outoftime <- outoftime %>%
+        select(!c(date, cert))
+
+
+
+# Train/Test set
+TT <- combined_quaterly_data_1[!grepl(c("2014|2013"), combined_quaterly_data_1$date),]
+TT <- TT %>%
+        select(!c(date, cert))
+
+
+```
+
+
+#undersampling techniques. Train test split
+```{R}
+set.seed(111)
+train.index <- initial_split(TT, prop = .8, strata = solvency)
+
+step_train <- training(train.index)
+step_test <- testing(train.index)
+
+# Metrics for models
+meas <- metric_set(roc_auc, sens, f_meas, yardstick::recall, yardstick::precision, j_index, bal_accuracy, ppv, accuracy)
+```
+
+
+
+# Random Forest downsample 500 trees
+```{r}
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+rfdown_recipe <-
+        recipe(solvency ~., data = step_train) %>% 
+        step_downsample(solvency, skip = TRUE) %>%
+        prep()
+ 
+rs <- vfold_cv(step_train, repeats = 5, strata = solvency)
+tune_spec <- rand_forest(mtry = tune(), trees = 1000, min_n = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+wf <- workflow() %>%
+        add_recipe(rfdown_recipe)
+rfdown500_results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
+most_accurate <- results %>% 
+        select_best("f_meas")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+rfdown500_fit <- fit(final, data = step_train)
+baked <- bake(rfdown_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(rfdown500_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+table(step_test$solvency)
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+stopCluster(cl)
+
+
+#Out of time prediction
+bind_cols(solvency = outoftime$solvency, 
+          predict(rfdown500_fit, new_data = outoftime)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+
+```
+
+
+
+#Random Forest Downsample Diagnostic
+```{r}
+ predictions_outoftime <- predict(glmnet_fit, new_data = outoftime) %>%
+  bind_cols(outoftime %>% select(solvency))
+
+down_log <-tibble(
+  "precision" = 
+     yardstick::precision(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "recall" = 
+     yardstick::recall(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "F1" = 
+     yardstick::f_meas(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Sensitivity" = 
+     sens(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Youden J" = 
+     j_index(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Balanced Accuracy" = 
+     bal_accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+    "Accuracy" = 
+     accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+) %>%
+  unnest() %>%
+  kable()
+down_log
+
+results %>%
+  collect_metrics() %>%
+  ggplot(aes(x = mixture, y = mean)) +
+           geom_point() +
+           geom_line() +
+           facet_wrap(~.metric, scales = "free_y")
+
+results %>%
+  select(id, .metrics) %>%
+  unnest(.metrics) %>%
+    ggplot(aes(x = penalty, y = .estimate, color = id)) +
+           geom_point() +
+           geom_line() +
+           facet_wrap(~.metric, scales = "free_y")
+
+
+head(results$.metrics)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Down Sample Logistic Regression
+```{r}
+
+start.time <- proc.time()
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+logdown_recipe <-
+        recipe(solvency ~., data = step_train) %>% 
+        step_downsample(solvency, skip = TRUE) %>%
+        step_normalize(all_numeric(), -all_outcomes()) %>%
+        prep()
+
+
+rs <- vfold_cv(step_train, repeats = 10, strata = solvency)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet") 
+wf <- workflow() %>%
+        add_recipe(logdown_recipe)
+#my_grid <- grid_regular(penalty(), mixture())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
+most_accurate <- results %>% 
+        select_best("bal_accuracy")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = step_train)
+baked <- bake(logdown_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+#Out of time prediction
+bind_cols(solvency = outoftime$solvency, 
+          predict(glmnet_fit, new_data = outoftime)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+stopCluster(cl)
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

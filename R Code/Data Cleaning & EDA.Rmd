@@ -1,0 +1,433 @@
+---
+title: "Please Don't be True"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+
+
+library(dplyr)
+library(ggrepel)
+library(ggplot2)
+library(stringr)
+library(corrplot)
+library(vip)
+library(lubridate)
+
+
+```
+
+
+# Cleaning Bank Failure Data
+```{r}
+
+bank_failures <- read.csv("Bank Failures Oct-2000 - 2020.csv")
+head(bank_failures)
+
+bank_failures_1 <-  bank_failures[!grepl(c("-19|-20|-17|-16|-15|-00|-01|-02|-03|-04|-05|-06|-07"), bank_failures$Closing.Date.),]
+
+
+
+
+bank_failures_1$Closing.Date. <- str_sub(bank_failures_1$Closing.Date., -6, -1)
+bank_failures_1$Closing.Date. <- my(bank_failures_1$Closing.Date.)
+
+
+bank_failures_y <- year(bank_failures_1$Closing.Date.)
+bank_failure_m  <- month(bank_failures_1$Closing.Date.)
+
+bank_failures_2<- bind_cols(cert = bank_failures_1$Cert.,  year = bank_failures_y, month =bank_failure_m)
+
+bank_failures_2$month <- cut(bank_failures_2$month, c(0,3,6,9,12),
+                  labels = c("1Q", "2Q", "3Q", "4Q"))
+
+
+bank_failures_2$date <- gsub(" ", "", paste(bank_failures_2$month,"", bank_failures_2$year))
+
+
+bank_failures_2$solvency <- 1
+tail(bank_failures_2)
+
+bank_failures_2 <- bank_failures_2 %>%
+  select(!c(year, month))
+head(bank_failures_2)
+
+
+```
+
+# Finacial Variables of Interest
+- intincy  = Yeild on earning assets  (Total Interest income/Total Average Earnings assets)
+- intexpy  = Cost of funding earning assets 
+- nimy     = Net interest margin ((Non-interest income - non-interest expense)/Total earning assets)
+- noniiay  = Noninterest income to average assets (Non-interest income/ average assets)
+- nonixay  = Noninterest expense to average assets (Non-interest expense/ average assets)
+- noijy    = Net operating income to assets  (Net-opertating income/ assets)
+- roa      = Return on assets (Net Income/ Total Average Assets)
+- roaptx   = Pretax return on assets (Pre-tax earnings/ Total Assets)
+- roe      = Return on equity (Net Income/ Shareholders Equity)
+- roeinjr  = Retained earnings to average equity (YTD only) (Retained Earnings/ Average Equity)
+- ntlnlsr  = Net Charge-offs to loans (Net Charge offs / average total loans 
+- eeffr    = Efficency Ration ( non-interest expenses/ revenue)
+- astempm  = Assets per employee (Total assets/ # of employees)
+- iddivnir = Cash dividends to net income (ytd only) (Total cash dividends/ net income)
+- lnatrest = Loan lease allowance to loans ( loan lease allowance / total loans)
+- nperfv   = Noncurrent assets plus other real estate (Noncurrent assets / Total Assets)
+- nclnlsr  = Non-current loans to loans (Non-current loans/ Total LOans)
+- lnlsntv  = Net loans and leases to total assets (Net loans and leases/ total assets)
+- lnlsdepr = net loans and leases to deposits (Net loans and leases/ Deposits)
+- idlncoor = net loans and leases to core deposits (Net loans and leases / Core deposits)
+- depdastr = total domestic deposits to total assets ( Total domestic deposits / total assets)
+- eqv      = Equity capital to assets (Total equity capital /  total assets)
+- rbc1aaj  = Leverage (core capital) ratio  (Tier 1 capital / (average assets - ineligible intangibles))
+- rbcrwaj  = Total risk based capital ratio
+
+# #Read & Join Bank financials
+```{r}
+# Due to the forecasting nature of the model there was financials for insolvent companies after the two year lag so I had to eliminate the financials after the two year lag
+
+#Q1 2008
+Q12008 <- read.csv("2006Q1.csv")
+
+Q12008$date <- "1Q2008"
+
+
+#Q2 2008
+Q22008 <- read.csv("2006Q2.csv")
+
+Q22008$date <- "2Q2008"
+Q22008 <- Q22008 %>%
+  filter(!cert == 24660,!cert == 1971)
+
+
+
+#Q3 2008
+Q32008 <- read.csv("2006Q3.csv")
+
+Q32008$date <- "3Q2008"
+Q32008 <- Q32008 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736)
+
+
+#Q4 2008
+Q42008 <- read.csv("2006Q4.csv")
+
+Q42008$date <- "4Q2008"
+Q42008 <- Q42008 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633)
+
+
+#Q1 2009
+Q12009 <- read.csv("2007Q1.csv")
+
+Q12009$date <- "1Q2009"
+Q12009 <- Q12009 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568)
+
+
+#Q2 2009
+Q22009 <- read.csv("2007Q2.csv")
+
+Q22009$date <- "2Q2009"
+Q22009 <- Q22009 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238)
+
+
+#Q3 2009
+Q32009 <- read.csv("2007Q3.csv")
+
+Q32009$date <- "3Q2009"
+Q32009 <- Q32009 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332)
+
+
+#Q4 2009
+Q42009 <- read.csv("2007Q4.csv")
+
+Q42009$date <- "4Q2009"
+Q42009 <- Q42009 %>%
+  filter(!cert == 24660,!cert == 1971,!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151)
+  
+
+
+#Q1 2010
+Q12010 <- read.csv("2008Q1.csv")
+
+Q12010$date <- "1Q2010"
+Q12010 <- Q12010 %>%
+  filter(!cert ==  33901,!cert == 12736,!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789,!cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536)
+
+
+
+#Q2 2010
+Q22010 <- read.csv("2008Q2.csv")
+
+Q22010$date <- "2Q2010"
+Q22010 <- Q22010 %>%
+  filter(!cert == 29730, !cert == 27011, !cert == 57961, !cert == 57523, !cert == 22728, !cert == 35469, !cert == 34194, !cert == 6782, !cert == 32633, !cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060)
+
+
+
+#Q3 2010
+Q32010 <- read.csv("2008Q3.csv")
+
+Q32010$date <- "3Q2010"
+Q32010 <- Q32010 %>%
+  filter(!cert == 57654, !cert == 13789, !cert == 58241, !cert == 57930, !cert == 26870, !cert == 23595, !cert == 16490, !cert == 30968, !cert == 28344, !cert == 34301, !cert == 35379, !cert == 11568, !cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279)
+
+
+#Q4 2010
+Q42010 <- read.csv("2008Q4.csv")
+
+Q42010$date <- "4Q2010"
+Q42010 <- Q42010 %>%
+  filter(!cert == 19733, !cert == 34959, !cert == 33025, !cert == 58001, !cert == 30763, !cert == 26538, !cert == 57017, !cert == 23124, !cert == 22574, !cert == 5431, !cert == 34563, !cert == 16500, !cert == 57342, !cert == 35399, !cert == 20078, !cert == 34820, !cert == 57558, !cert == 18243, !cert == 18896, !cert == 4754, !cert == 22238, !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599)
+
+
+
+Q42010 <- Q42010 %>%
+  filter(!cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053)
+
+
+
+#Q1 2011
+Q12011 <- read.csv("2009Q1.csv")
+
+Q12011$date <- "1Q2011"
+Q12011 <- Q12011 %>%
+  filter( !cert == 34639, !cert == 34881, !cert == 8266, !cert == 33824, !cert == 57943, !cert == 34369, !cert == 32069, !cert == 34396, !cert == 26535, !cert == 57563, !cert == 35461, !cert == 34843, !cert == 32247, !cert == 35175, !cert == 5757, !cert == 17309, !cert == 35251, !cert == 27837, !cert == 4614, !cert == 57436, !cert == 35285, !cert == 9744, !cert ==57893, !cert == 57332, !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205)
+
+Q12011 <- Q12011 %>%
+  filter( !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306)
+
+
+
+#Q2 2011
+Q22011 <- read.csv("2009Q2.csv")
+
+Q22011$date <- "2Q2011"
+Q22011 <- Q22011 %>%
+  filter( !cert == 12093, !cert == 11710, !cert == 15302, !cert == 9262, !cert == 3644, !cert == 57667, !cert == 18390, !cert == 22754, !cert == 34594, !cert == 34103, !cert == 23556, !cert == 34341, !cert == 58065, !cert == 57346, !cert == 57430, !cert == 57105, !cert == 27367, !cert == 27048, !cert == 8486, !cert == 9873, !cert == 57604, !cert == 32288, !cert == 34270, !cert == 18659, !cert == 27364, !cert == 27183, !cert == 23268, !cert == 31559, !cert == 9609, !cert == 34485, !cert == 57645, !cert == 34043, !cert == 34682, !cert == 57702, !cert == 22130, !cert == 32618, !cert == 28312, !cert == 1909, !cert == 27197, !cert == 25231, !cert == 20203, !cert == 27732, !cert == 35030, !cert == 34875, !cert == 13693, !cert == 57736, !cert == 22868, !cert == 10100, !cert == 57068, !cert == 57151, !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205)
+Q22011 <- Q22011 %>%
+  filter( !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306, !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292)
+
+
+
+#Q3 2011
+Q32011 <- read.csv("2009Q3.csv")
+
+Q32011$date <- "3Q2011"
+Q32011 <- Q32011 %>%
+  filter( !cert == 34824, !cert == 11416, !cert == 57263, !cert == 23266, !cert == 57959, !cert == 57794, !cert == 58336, !cert == 35044, !cert == 18321, !cert == 57525, !cert == 35038, !cert == 32218, !cert == 35291, !cert == 23594, !cert == 34659, !cert == 30006, !cert == 11677, !cert == 25222, !cert == 33782, !cert == 18776, !cert == 22286, !cert == 30329, !cert == 35074, !cert == 19450, !cert == 32469, !cert == 32267, !cert == 22427, !cert == 57914, !cert == 58016, !cert == 34663, !cert == 26290, !cert == 12080, !cert == 29776, !cert == 10440, !cert == 32583, !cert == 22846, !cert == 58399, !cert == 4731, !cert == 58315, !cert == 32167, !cert == 1006, !cert == 32276, !cert == 26820, !cert == 26348, !cert == 28536, !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205, !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306, !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292)
+
+Q32011 <- Q32011 %>%
+  filter( !cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593)
+
+
+#Q4 2011
+Q42011 <- read.csv("2009Q4.csv")
+
+Q42011$date <- "4Q2011"
+Q42011 <- Q42011 %>%
+  filter(  !cert == 22977, !cert == 34705, !cert == 17522, !cert == 1252, !cert == 57147, !cert == 8265, !cert == 32498, !cert == 20501, !cert == 22469, !cert == 16480, !cert == 5672, !cert == 16133, !cert == 5702, !cert == 23011, !cert == 16730, !cert == 15448, !cert == 57586, !cert == 3287, !cert == 29952, !cert == 32423, !cert == 58352, !cert == 38129, !cert == 27126, !cert == 9268, !cert == 34976, !cert == 34430, !cert == 58071, !cert == 27096, !cert == 58182, !cert == 29561, !cert == 18806, !cert == 58104, !cert == 33535, !cert == 33989, !cert == 10054, !cert == 24957, !cert == 8221, !cert == 57399, !cert == 34684, !cert == 34678, !cert == 57060, !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205, !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306, !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292,!cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593)
+
+Q42011 <- Q42011 %>%
+  filter(  !cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513)
+
+
+
+#Q1 2012
+Q12012 <- read.csv("2010Q1.csv")
+
+Q12012$date <- "1Q2012"
+Q12012 <- Q12012 %>%
+  filter( !cert == 34242, !cert == 34878, !cert == 28886, !cert == 57724, !cert == 24067, !cert == 26619, !cert == 23876, !cert == 33493, !cert == 21521, !cert == 3735, !cert == 22853, !cert == 34658, !cert == 34821, !cert == 30600, !cert == 10888, !cert == 58429, !cert == 27150, !cert == 32185, !cert == 31027, !cert == 30005, !cert == 58362, !cert == 17792, !cert == 22710, !cert == 14246, !cert == 16476, !cert == 57697, !cert == 35517, !cert == 35114, !cert == 35586, !cert == 34255, !cert == 18117, !cert == 57735, !cert == 57360, !cert == 35106, !cert == 57814, !cert == 57315, !cert == 34785, !cert == 15814, !cert == 31813, !cert == 29341, !cert == 32955, !cert == 57110, !cert == 26563, !cert == 34152, !cert == 35279, !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205, !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306, !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292,!cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593,!cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513)
+
+Q12012 <- Q12012 %>%
+  filter( !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917)
+
+#Q2 2012
+Q22012 <- read.csv("2010Q2.csv")
+
+Q22012$date <- "2Q2012"
+Q22012 <- Q22012 %>%
+  filter( !cert == 35462, !cert == 32456, !cert == 58072, !cert == 11636, !cert == 32571, !cert == 35383, !cert == 25172, !cert == 32280, !cert == 28864, !cert == 28136, !cert == 32536, !cert == 27559, !cert == 17837, !cert == 10506, !cert == 34486, !cert == 35434, !cert == 23181, !cert == 57658, !cert == 57699, !cert == 9619, !cert == 22643, !cert == 31964, !cert == 34231, !cert == 17599, !cert == 25266, !cert == 27344, !cert == 31623, !cert == 15640, !cert == 27090, !cert == 33219, !cert == 32165, !cert == 27259, !cert == 35061, !cert == 57107, !cert == 58197, !cert == 57448, !cert == 182, !cert == 27808, !cert == 28162, !cert == 58308, !cert == 35053, !cert == 21777, !cert == 35250, !cert == 30898, !cert == 58205, !cert == 34016, !cert == 27573, !cert == 32251, !cert == 33904, !cert == 2119, !cert == 16089, !cert == 22173, !cert == 32582, !cert == 31263, !cert == 58087, !cert == 34411, !cert == 57885, !cert == 57831, !cert == 14580, !cert == 35463, !cert == 20340, !cert == 35078, !cert == 5287, !cert == 34673, !cert == 35561, !cert == 19040, !cert == 34578, !cert == 58495, !cert == 35065, !cert == 58052, !cert == 23306, !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292,!cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593,!cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513, !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917)
+
+Q22012 <- Q22012 %>%
+  filter( !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 33883)
+
+
+#Q3 2012
+Q32012 <- read.csv("2010Q3.csv")
+
+Q32012$date <- "3Q2012"
+Q32012 <- Q32012 %>%
+  filter( !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292,!cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593,!cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513, !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917, !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388)
+
+Q32012 <- Q32012 %>%
+  filter( !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690)
+          
+#Q4 2012
+Q42012 <- read.csv("2010Q4.csv")
+
+Q42012$date <- "4Q2012"
+Q42012 <- Q42012 %>%
+  filter( !cert == 34965, !cert == 57820, !cert == 57440, !cert == 19758, !cert == 57868, !cert == 34516, !cert == 31293, !cert == 2303, !cert == 5328, !cert == 57646, !cert == 12261, !cert == 57432, !cert == 35242, !cert == 57948, !cert == 35478, !cert == 14939, !cert == 13272, !cert == 34692, !cert == 151, !cert == 34601, !cert == 57855, !cert == 34783, !cert == 34187, !cert == 4077, !cert == 34818, !cert == 34292,!cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593,!cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513, !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917, !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388, !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690)
+
+Q42012 <- Q42012 %>%
+  filter( !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685)
+
+
+
+
+
+#Q1 2013
+Q12013 <- read.csv("2011Q1.csv")
+
+
+Q12013$date <- "1Q2013"
+Q12013 <- Q12013 %>%
+  filter( !cert == 10086, !cert == 35418, !cert == 21495, !cert == 57705, !cert == 19794, !cert == 17750, !cert == 24099, !cert == 14273, !cert == 26297, !cert == 57625, !cert == 58539, !cert == 19797, !cert == 34234, !cert == 34898, !cert == 57213, !cert == 57647, !cert == 513, !cert == 23626, !cert == 58420, !cert == 19237, !cert == 27583, !cert == 57593,!cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513, !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917, !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388, !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690, !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685)
+
+Q12013 <- Q12013 %>%
+  filter( !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331)
+          
+#Q2 2013
+Q22013 <- read.csv("2011Q2.csv")
+
+Q22013$date <- "2Q2013"
+Q22013 <- Q22013 %>%
+  filter( !cert == 27935, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 34522, !cert == 57835, !cert == 58238, !cert == 19554, !cert == 34870, !cert == 57442, !cert == 58056, !cert == 35244, !cert == 2994, !cert == 58283, !cert == 58222, !cert == 4392, !cert == 22637, !cert == 22528, !cert == 4744, !cert == 34130, !cert == 35356, !cert == 57239, !cert == 57212, !cert == 58273, !cert == 58226, !cert == 25155, !cert == 20408, !cert == 33983, !cert == 33513, !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917, !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388, !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690, !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685, !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331)
+
+Q22013 <- Q22013 %>%
+  filter( !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431)
+
+
+#Q3 2013
+Q32013 <- read.csv("2011Q3.csv")
+
+Q32013$date <- "3Q2013"
+Q32013 <- Q32013 %>%
+  filter( !cert == 10216, !cert == 20115, !cert == 57256, !cert == 32347, !cert == 58046, !cert == 35395, !cert == 57537, !cert == 34392, !cert == 57036, !cert == 21132, !cert == 57759, !cert == 19397, !cert == 57087, !cert == 57860, !cert == 14194, !cert == 19657, !cert == 58343, !cert == 57917, !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388, !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690, !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685, !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331, !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431)
+
+Q32013 <- Q32013 %>%
+  filter( !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789)
+
+
+#Q4 2013
+Q42013 <- read.csv("2011Q4.csv")
+
+Q42013$date <- "4Q2013"
+Q42013 <- Q42013 %>%
+  filter( !cert == 57186, !cert == 19252, !cert == 31581, !cert == 16579, !cert == 35296, !cert == 34823, !cert == 19869, !cert == 23187, !cert == 29761, !cert == 5687, !cert == 29178, !cert == 34046, !cert == 57597, !cert == 58068, !cert == 35419, !cert == 3388, !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690, !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685, !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331, !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431, !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789)
+
+Q42013 <- Q42013 %>%
+  filter( !cert == 34943, !cert == 35016, !cert == 19849, !cert == 34707, !cert == 57041, !cert == 14318)
+
+
+#Q1 2014
+Q12014 <- read.csv("2012Q1.csv")
+
+Q12014$date <- "1Q2014"
+Q12014 <- Q12014 %>%
+  filter( !cert == 35527, !cert == 26759, !cert == 57766, !cert == 31495, !cert == 32503, !cert == 23632, !cert == 23156, !cert == 35224, !cert == 416, !cert == 35372, !cert == 9257, !cert == 34515, !cert == 27405, !cert == 35299, !cert == 1690, !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685, !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331, !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431, !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789, !cert == 34943, !cert == 35016, !cert == 19849, !cert == 34707, !cert == 57041, !cert == 14318)
+
+Q12014 <- Q12014 %>%
+  filter( !cert == 14794, !cert == 57431)
+
+
+#Q2 2014 
+Q22014 <- read.csv("2012Q2.csv")
+
+Q22014$date <- "2Q2014"
+Q22014 <- Q22014 %>%
+  filter( !cert == 19498, !cert == 1056, !cert == 57096, !cert == 57847, !cert == 32711, !cert == 1361, !cert == 27986, !cert == 16240, !cert == 28243, !cert == 35246, !cert == 27316, !cert == 20685, !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331, !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431, !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789, !cert == 34943, !cert == 35016, !cert == 19849, !cert == 34707, !cert == 57041, !cert == 14318, !cert == 14794, !cert == 57431)
+
+Q22014 <- Q22014 %>%
+  filter( !cert == 5732, !cert == 17967, !cert == 34296, !cert == 35096, !cert == 58531)
+
+
+#Q3 2014
+Q32014 <- read.csv("2012Q3.csv")
+
+Q32014$date <- "3Q2014"
+Q32014 <- Q32014 %>%
+  filter( !cert == 58073, !cert == 28144, !cert == 19189, !cert == 27148, !cert == 35009, !cert == 3731, !cert == 57928, !cert == 27331, !cert == 27331, !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431, !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789, !cert == 34943, !cert == 35016, !cert == 19849, !cert == 34707, !cert == 57041, !cert == 14318, !cert == 14794, !cert == 57431, !cert == 5732, !cert == 17967, !cert == 34296, !cert == 35096, !cert == 58531)
+
+Q32014 <- Q32014 %>%
+  filter( !cert == 15062, !cert == 57866, !cert == 32284, !cert == 32368, !cert == 10450, !cert == 21793, !cert == 12483)
+
+
+#Q4 2014
+Q42014 <- read.csv("2012Q4.csv")
+
+
+Q42014$date <- "4Q2014"
+Q42014 <- Q42014 %>%
+  filter( !cert == 33997, !cert == 57157, !cert == 22476, !cert == 16431, !cert == 58066, !cert == 29594, !cert == 26680, !cert == 58034, !cert == 57158, !cert == 21649, !cert == 58701, !cert == 58185, !cert == 34527, !cert == 35386, !cert == 58358, !cert == 34789, !cert == 34943, !cert == 35016, !cert == 19849, !cert == 34707, !cert == 57041, !cert == 14318, !cert == 14794, !cert == 57431, !cert == 5732, !cert == 17967, !cert == 34296, !cert == 35096, !cert == 58531, !cert == 15062, !cert == 57866, !cert == 32284, !cert == 32368, !cert == 10450, !cert == 21793, !cert == 12483)
+
+Q42014 <- Q42014 %>%
+  filter( !cert == 58125, !cert == 28462)
+
+
+# Join all Quarterly financials together
+combined_quaterly_data <- bind_rows(Q12008, Q22008, Q32008, Q42008, Q12009, Q22009, Q32009, Q42009, Q12010, Q22010, Q32010, Q42010, Q12011, Q22011, Q32011, Q42011, Q12012, Q22012, Q32012, Q42012, Q12013, Q22013, Q32013, Q42013, Q12014, Q22014, Q32014, Q42014)
+
+combined_quaterly_data <- combined_quaterly_data %>%
+        select(!c(docket:idntigr, rbct1cer, cblrind, idt1cer, idt1rwajr, iderncvr, lnresncr, rbc1rwaj, ernastr, elnantr, elnatry, lnlsgr5, eq5, ernast5, asset5))
+
+
+```
+
+
+
+# Add Solvency Indicator
+```{r}
+combined_quaterly_data_1 <- left_join(combined_quaterly_data, bank_failures_2, by = c("cert", "date"))
+table(combined_quaterly_data_1$solvency)
+
+combined_quaterly_data_1 <- combined_quaterly_data_1 %>%
+  mutate(solvency = ifelse(is.na(solvency), 0, solvency))
+
+
+```
+
+
+
+
+# Removing NA's
+```{r}
+combined_quaterly_data_1 %>%
+        filter(solvency == 1) %>%
+        summary(is.na(combined_quaterly_data_1))
+
+combined_quaterly_data_1 %>%
+        filter(solvency == 0) %>%
+        summary(is.na(combined_quaterly_data_1))
+
+combined_quaterly_data_1 <- combined_quaterly_data_1 %>%
+        group_by(cert) %>%
+        na.omit()
+
+```
+
+
+# Descriptive Statistics:
+```{r}
+
+
+
+
+```
+
+# Saving Clean Version of Data Set for Model Building
+```{r}
+write.csv(combined_quaterly_data_1, "C:/Users/amaut/OneDrive/Documents\\combined_quaterly_data_1.csv", row.names = FALSE)
+
+```
+
+
+
+
+
+
