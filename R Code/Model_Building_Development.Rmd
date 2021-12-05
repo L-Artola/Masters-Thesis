@@ -18,12 +18,15 @@ library(workflowsets)
 library(knitr)
 library(caret)
 library(ranger)
+library(corrplot)
 
 library(vip)
 library(moments)
 
 library(doParallel)
 library(forcats)
+
+library(randomForest)
 
 ```
 
@@ -35,6 +38,65 @@ library(forcats)
 combined_quaterly_data_1 <- read.csv("combined_quaterly_data_1.csv")
 combined_quaterly_data_1$solvency <- as.factor(combined_quaterly_data_1$solvency)
 head(combined_quaterly_data_1)
+
+```
+
+# Correlation plots
+```{r}
+corr_test <- combined_quaterly_data_1 %>%
+  select(!c(date, cert))
+
+corr.d <- cor( corr_test)
+corr.d[ lower.tri( corr.d, diag = TRUE ) ] <- NA
+corrplot( corr.d, type = "upper", diag = FALSE )
+
+head(corr_test)
+
+
+```
+# Feature Selection based on LASSO RMSE
+```{r}
+start.time <- proc.time()
+
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl, cores = 4)
+
+
+feature_recipe <-
+        recipe(solvency ~., data = step_train) %>%
+        step_normalize(all_numeric(), -all_outcomes()) %>%
+        prep()
+
+rs <- vfold_cv(step_train, repeats = 10, strata = solvency)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet") 
+wf <- workflow() %>%
+        add_recipe(logsmote_recipe)
+#my_grid <- grid_regular(penalty(), mixture())
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = 100,  control = control_grid(save_pred = TRUE), metrics = meas)
+most_accurate <- results %>% 
+        select_best("rmse")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = step_train)
+baked <- bake(feature_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+#Out of time prediction
+oot <- bind_cols(solvency = outoftime$solvency, 
+          predict(glmnet_fit, new_data = outoftime)) %>%
+          conf_mat(truth = solvency, estimate = .pred_class)
+
+stopCluster(cl)
+
 
 ```
 
@@ -87,16 +149,16 @@ tune_spec <- rand_forest(mtry = tune(), trees = 1000, min_n = tune()) %>%
   set_engine("ranger")
 wf <- workflow() %>%
         add_recipe(rfdown_recipe)
-rfdown500_results <- tune_grid(wf %>%
+results <- tune_grid(wf %>%
                              add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
 most_accurate <- results %>% 
         select_best("f_meas")
 final <- finalize_workflow(wf %>%
                                    add_model(tune_spec), most_accurate)
-rfdown500_fit <- fit(final, data = step_train)
+glmnet_fit <- fit(final, data = step_train)
 baked <- bake(rfdown_recipe, new_data = step_test)
 bind_cols(solvency = step_test$solvency, 
-          predict(rfdown500_fit, new_data = step_test)) %>%
+          predict(glmnet_fit, new_data = step_test)) %>%
         conf_mat(truth = solvency, estimate = .pred_class)
 table(step_test$solvency)
 
@@ -109,13 +171,35 @@ stopCluster(cl)
 
 #Out of time prediction
 bind_cols(solvency = outoftime$solvency, 
-          predict(rfdown500_fit, new_data = outoftime)) %>%
+          predict(glmnet_fit, new_data = outoftime)) %>%
         conf_mat(truth = solvency, estimate = .pred_class)
+
+most_accurate
+results %>%
+collect_metrics()
+```
+
+
+
+
+# Hyper Tuning Parameters for downsample Randomforest 1000 trees
+```{r}
+results %>%
+  collect_metrics() %>%
+  filter(.metric == "f_meas") %>%
+  select(mean, min_n, mtry) %>%
+  pivot_longer(min_n:mtry,
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "f_meas")
 
 
 
 ```
-
 
 
 #Random Forest Downsample Diagnostic
@@ -150,6 +234,18 @@ down_log <-tibble(
   kable()
 down_log
 
+pred_prob <- predict(glmnet_fit, new_data = outoftime, type = "prob") %>%
+  bind_cols(outoftime %>%
+              select(solvency))
+
+auc_roc <- pred_prob %>%
+  select(.pred_1) 
+  bind_cols(outoftime %>%
+              select(solvency))
+
+roc_auc(pred_prob, solvency, .pred_1)
+
+
 results %>%
   collect_metrics() %>%
   ggplot(aes(x = mixture, y = mean)) +
@@ -168,6 +264,43 @@ results %>%
 
 head(results$.metrics)
 
+dim(outoftime)
+```
+
+
+
+```{r}
+ predictions_outoftime <- predict(glmnet_fit, new_data = step_train) %>%
+  bind_cols(step_train %>% select(solvency))
+
+down_log <-tibble(
+  "precision" = 
+     yardstick::precision(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "recall" = 
+     yardstick::recall(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "F1" = 
+     yardstick::f_meas(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Sensitivity" = 
+     sens(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Youden J" = 
+     j_index(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+  "Balanced Accuracy" = 
+     bal_accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+    "Accuracy" = 
+     accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     select(.estimate),
+) %>%
+  unnest() %>%
+  kable()
+down_log
+
+
 
 ```
 
@@ -175,8 +308,62 @@ head(results$.metrics)
 
 
 
+# New Sample
+```{r}
+set.seed(222)
+train.index <- initial_split(TT, prop = .8, strata = solvency)
+
+step_train <- training(train.index)
+step_test <- testing(train.index)
+
+# Metrics for models
+meas <- metric_set(roc_auc, sens, f_meas, yardstick::recall, yardstick::precision, j_index, bal_accuracy, ppv, accuracy)
 
 
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+rfdown_recipe <-
+        recipe(solvency ~., data = step_train) %>% 
+        step_downsample(solvency, skip = TRUE) %>%
+        prep()
+ 
+rs <- vfold_cv(step_train, repeats = 5, strata = solvency)
+tune_spec <- rand_forest(mtry = tune(), trees = 1000, min_n = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+wf <- workflow() %>%
+        add_recipe(rfdown_recipe)
+results <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
+most_accurate <- results %>% 
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate)
+glmnet_fit <- fit(final, data = step_train)
+baked <- bake(rfdown_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+table(step_test$solvency)
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+
+stopCluster(cl)
+
+
+#Out of time prediction
+bind_cols(solvency = outoftime$solvency, 
+          predict(glmnet_fit, new_data = outoftime)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+
+
+```
 
 
 
