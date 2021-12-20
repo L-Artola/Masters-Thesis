@@ -7,7 +7,7 @@ output: html_document
 
 rm(list=ls())
 
-
+library(tidyverse)
 library(dplyr)
 library(tidymodels)
 library(ggrepel)
@@ -19,14 +19,16 @@ library(knitr)
 library(caret)
 library(ranger)
 library(corrplot)
+library(glmnet)
+library(e1071)
+library(varImp)
+library(MLeval)
 
 library(vip)
 library(moments)
 
 library(doParallel)
-library(forcats)
 
-library(randomForest)
 
 ```
 
@@ -36,15 +38,42 @@ library(randomForest)
 ```{R}
 
 combined_quaterly_data_1 <- read.csv("combined_quaterly_data_1.csv")
-combined_quaterly_data_1$solvency <- as.factor(combined_quaterly_data_1$solvency)
-head(combined_quaterly_data_1)
 
 ```
 
+
+# Selected features
+```{r}
+CQD_final_set <- combined_quaterly_data_1 %>%
+  select(c(rbc1aaj, rbcrwaj, eqv, lnlsntv, roe, roa, noijy, nimy,	ntlnlsr, noniiay,	eeffr, lnatresr, nperfv, nclnlsr, idlncorr, intexpy
+, date, solvency))
+
+table(CQD_final_set$solvency)
+```
+
+
+Total Risk Based capital Ratio	(rbc1aaj)
+Leverage ratio	(rbcrwaj)
+Equity capital to assets	(eqv)
+Net loans and leases to total assets	(lnlsntv)
+Return on equity	(roe)
+Return on assets	(roa)
+Net operating income to assets	(noijy)
+Net interest margin	(nimy)
+Net Charge-offs to loans	(ntlnlsr)
+Noninterest income to average assets	(noniiay)
+Efficency Ratio	(eeffr)
+Loan lease allowance to loans	(lnatresr)
+Noncurrent assets plus other real estate	(nperfv)
+Non-current loans to loans	(nclnlsr)
+net loans and leases to core deposits	(idlncorr)
+Cost of funding earning assets 	(intexpy)
+
+
 # Correlation plots
 ```{r}
-corr_test <- combined_quaterly_data_1 %>%
-  select(!c(date, cert))
+corr_test <- CQD_final_set %>%
+  select(!c(date))
 
 corr.d <- cor( corr_test)
 corr.d[ lower.tri( corr.d, diag = TRUE ) ] <- NA
@@ -59,75 +88,45 @@ head(corr_test)
 
 # Train Test Split | 2 Year Out of Time Split
 ```{r}
+# Make Solvency a factor
+CQD_final_set$solvency <- as.factor(CQD_final_set$solvency)
+
+
+
 #Out of time validation set 
-outoftime <- combined_quaterly_data_1[grepl(c("2014|2013"), combined_quaterly_data_1$date),]
+outoftime <- CQD_final_set[grepl(c("2014|2013"), CQD_final_set$date),]
 outoftime <- outoftime %>%
-        select(!c(date, cert))
+        select(!c(date))
 
 
 
 # Train/Test set
-TT <- combined_quaterly_data_1[!grepl(c("2014|2013"), combined_quaterly_data_1$date),]
+TT <- CQD_final_set[!grepl(c("2014|2013"), CQD_final_set$date),]
 TT <- TT %>%
-        select(!c(date, cert))
+        select(!c(date))
 
-
+table(TT$solvency)
 ```
 
 
 # Train, Sub-Train, Test split
 ```{R}
+#Train Test Split
 set.seed(111)
 train.index <- initial_split(TT, prop = .8, strata = solvency)
 
-# FUll in sample Train
 step_train <- training(train.index)
 step_test <- testing(train.index)
 
 # Metrics for models
-meas <- metric_set(roc_auc, sens, f_meas, yardstick::recall, yardstick::precision, j_index, bal_accuracy, ppv, accuracy)
-
-```
-
-# Feature Selection based on Lasso
-```{r}
-set.seed(111)
-start.time <- proc.time()
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl, cores = 8)
-
-fs_recipe <-
-        recipe(solvency ~., data = step_train) %>% 
-        step_normalize(all_numeric(), -all_outcomes()) %>%
-        prep()
-
-rs <- vfold_cv(step_train, repeats = 10, strata = solvency)
-tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
-        set_engine("glmnet") 
-wf <- workflow() %>%
-        add_recipe(fs_recipe)
-results <- tune_grid(wf %>%
-                             add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
-most_accurate <- results %>% 
-        select_best("f_meas")
-
-most_accurate_2 <- most_accurate <- results %>% 
-        select_best("roc_auc")
-
-stop.time <- proc.time()
-run.time <- stop.time - start.time
-print(run.time)
-stopCluster(cl)
-
-most_accurate
-most_accurate_2
+#meas <- metric_set(roc_auc, sens, f_meas, yardstick::recall, yardstick::precision, j_index, bal_accuracy, ppv, accuracy)
 
 
 ```
+
 
 #Down Sample Logistic Regression
 ```{r}
-
 start.time <- proc.time()
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl, cores = 8)
@@ -144,11 +143,10 @@ tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
         set_engine("glmnet") 
 wf <- workflow() %>%
         add_recipe(logdown_recipe)
-#my_grid <- grid_regular(penalty(), mixture())
 results <- tune_grid(wf %>%
                              add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
 most_accurate <- results %>% 
-        select_best("bal_accuracy")
+        select_best("roc_auc")
 final <- finalize_workflow(wf %>%
                                    add_model(tune_spec), most_accurate)
 glmnet_fit <- fit(final, data = step_train)
@@ -167,56 +165,42 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
-###############
-# Variables of Importance
-
-final_lasso <- finalize_workflow(
-  wf %>% add_model(tune_spec),
-  most_accurate
-)
-
-final_lasso %>%
-  fit(step_train) %>%
-  pull_workflow_fit() %>%
-  vi(lambda = most_accurate_2$penalty) %>%
-  mutate(
-    Importance = abs(Importance),
-    Variable = fct_reorder(Variable, Importance)
-  ) %>%
-  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
-  geom_col() +
-  scale_x_continuous(expand = c(0, 0)) +
-  labs(y = NULL)
 ```
+
+
+
+
+
+
+
 
 
 #Diagnostics
 ```{r}
- predictions_step_train <- predict(glmnet_fit, new_data = step_train) %>%
-  bind_cols(step_train %>% select(solvency))
+ predictions_step_train <- predict(glmnet_fit, new_data = outoftime) %>%
+  bind_cols(outoftime %>% select(solvency))
 
 down_log <-tibble(
   "precision" = 
-     yardstick::precision(predictions_outoftime, solvency, .pred_class) %>%
+     yardstick::precision(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
   "recall" = 
-     yardstick::recall(predictions_outoftime, solvency, .pred_class) %>%
+     yardstick::recall(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
   "F1" = 
-     yardstick::f_meas(predictions_outoftime, solvency, .pred_class) %>%
+     yardstick::f_meas(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
   "Sensitivity" = 
-     sens(predictions_outoftime, solvency, .pred_class) %>%
+     sens(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
   "Youden J" = 
-     j_index(predictions_outoftime, solvency, .pred_class) %>%
+     j_index(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
   "Balanced Accuracy" = 
-     bal_accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     bal_accuracy(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
     "Accuracy" = 
-     accuracy(predictions_outoftime, solvency, .pred_class) %>%
+     accuracy(predictions_step_train, solvency, .pred_class) %>%
      select(.estimate),
 ) %>%
   unnest() %>%
@@ -254,11 +238,186 @@ results %>%
 head(results$.metrics)
 
 dim(outoftime)
+
+most_accurate
+```
+
+
+#smote Sample Logistic Regression
+```{r}
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+logsmote_recipe <-
+        recipe(solvency ~., data = step_train) %>% 
+        step_smote(solvency, skip = TRUE) %>%
+        step_normalize(all_numeric(), -all_outcomes()) %>%
+        prep()
+
+rs <- vfold_cv(step_train, repeats = 10, strata = solvency)
+tune_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+        set_engine("glmnet") 
+wf <- workflow() %>%
+        add_recipe(logsmote_recipe)
+results_smote <- tune_grid(wf %>%
+                             add_model(tune_spec), resamples = rs, grid = 50,  control = control_grid(save_pred = TRUE), metrics = meas)
+most_accurate_smote <- results %>% 
+        select_best("roc_auc")
+final <- finalize_workflow(wf %>%
+                                   add_model(tune_spec), most_accurate_smote)
+glmnet_fit <- fit(final, data = step_train)
+baked <- bake(logsmote_recipe, new_data = step_test)
+bind_cols(solvency = step_test$solvency, 
+          predict(glmnet_fit, new_data = step_test)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+#Out of time prediction
+bind_cols(solvency = outoftime$solvency, 
+          predict(glmnet_fit, new_data = outoftime)) %>%
+        conf_mat(truth = solvency, estimate = .pred_class)
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
 ```
 
 
 
+#Cartet Train Test split
+```{r}
+set.seed(111)
 
+# Reverse Factor Levels
+levels(TT$solvency) <- c("Solvent", "Insolvent")
+TT$solvency <- factor(TT$solvency, levels=rev(levels(TT$solvency)))
+                      
+levels(outoftime$solvency) <- c("Solvent", "Insolvent")
+outoftime$solvency <- factor(outoftime$solvency, levels=rev(levels(outoftime$solvency)))
+
+
+train_split <- caret::createDataPartition(TT$solvency, p = 0.80, list = FALSE)
+# Here we define a split index and we are now going to use a multiclass ML model to fit the data
+train <- TT[train_split,]
+test <- TT[-train_split,]
+
+
+```
+
+# Caret Downsample Penalized Logistic Regression
+```{r}
+
+set.seed(111)
+
+down_train <- downSample(x = train[, -ncol(train)],
+                         y = train$solvency)
+
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+ds_log = train(Class ~.,  
+               data = down_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+# Probability Threshold
+probs <- seq(.1, 0.9, by = 0.02)
+ths <- thresholder(ds_log,
+                   threshold = probs,
+                   final = TRUE,
+                   statistics = "all")
+ths
+
+# Pick measure to maximizes
+ths %>%
+  mutate(prob = probs) %>%
+  filter( == max()) %>%
+  pull(prob) -> thresh_prob
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(ds_log, down_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                down_train$Class))
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$down_train.Class)
+cm
+F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
+predictions <- predict(ds_log, down_train, type = "prob")
+test1 <- evalm(data.frame(predictions, down_train$Class), positive = "Insolvent")
+
+
+head(predictions_1)
+# Confusion Matrix on test Set
+predictions <- predict(ds_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+predictions <- predict(ds_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(ds_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(ds_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+head(predictions_1)
+
+ds_log$results$ROC
+
+
+
+?evalm
+
+
+```
+
+
+```{r}
+316/(316+56)
+71/(71+301)
+
+27/(27+15)
+1921/(1921+55677)
+```
+
+
+```{r}
+
+plot(ds_log)
+
+
+
+
+
+
+```
 
 
 
