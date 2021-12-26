@@ -14,6 +14,7 @@ library(stringr)
 library(corrplot)
 library(vip)
 library(lubridate)
+library(vtable)
 
 
 ```
@@ -392,39 +393,267 @@ combined_quaterly_data_1 <- combined_quaterly_data_1 %>%
 
 ```
 
+# Selecting Features
+```{r}
+CQD_final_set <- combined_quaterly_data_1 %>%
+  select(c(cert, rbc1aaj, rbcrwaj, eqv, lnlsntv, roe, roa, noijy, nimy,	ntlnlsr, noniiay,	eeffr, lnatresr, nperfv, nclnlsr, idlncorr, intexpy
+, date, solvency))
+
+
+```
+
+Total Risk Based capital Ratio	(rbc1aaj)
+Leverage ratio	(rbcrwaj)
+Equity capital to assets	(eqv)
+Net loans and leases to total assets	(lnlsntv)
+Return on equity	(roe)
+Return on assets	(roa)
+Net operating income to assets	(noijy)
+Net interest margin	(nimy)
+Net Charge-offs to loans	(ntlnlsr)
+Noninterest income to average assets	(noniiay)
+Efficency Ratio	(eeffr)
+Loan lease allowance to loans	(lnatresr)
+Noncurrent assets plus other real estate	(nperfv)
+Non-current loans to loans	(nclnlsr)
+net loans and leases to core deposits	(idlncorr)
+Cost of funding earning assets 	(intexpy)
+
 
 
 
 # Removing NA's
 ```{r}
-combined_quaterly_data_1 %>%
+table(is.na(CQD_final_set))
+CQD_final_set %>%
+  summarise_all(funs(sum(is.na(.))))
+
+
+CQD_final_set %>%
         filter(solvency == 1) %>%
-        summary(is.na(combined_quaterly_data_1))
+        summary(is.na(CQD_final_set))
 
-combined_quaterly_data_1 %>%
+CQD_final_set %>%
         filter(solvency == 0) %>%
-        summary(is.na(combined_quaterly_data_1))
+        summary(is.na(CQD_final_set))
 
-combined_quaterly_data_1 <- combined_quaterly_data_1 %>%
+CQD_final_set <- CQD_final_set %>%
         group_by(cert) %>%
         na.omit()
 
+
 ```
+
+
+# Corr Plot
+```{r}
+corr_test <- CQD_final_set %>%
+  select(!c(date))
+
+corr.d <- cor( corr_test)
+corr.d[ lower.tri( corr.d, diag = TRUE ) ] <- NA
+corrplot( corr.d, type = "upper", diag = FALSE )
+
+
+```
+
+
+# Graphing and minimizing outliers by removal with primary objective to keep all insolvent banks in sample
+```{r}
+
+# Graphing Distributions
+
+
+#rbc1aaj: Cut off at 40
+ggplot(CQD_final_set, aes(x=rbc1aaj)) + geom_point(stat = "count")
+
+# rbcrwaj: Cut off at 65
+ggplot(CQD_final_set, aes(x=rbcrwaj)) + geom_point(stat = "count")
+
+# eqv: cut above 50
+ggplot(CQD_final_set, aes(x=eqv)) + geom_point(stat = "count")
+
+# roe: Cut off at below - 1000 and above 62
+ggplot(CQD_final_set, aes(x=roe)) + geom_point(stat = "count")
+
+# roa: Cut off below -100, Cut off above 100
+ggplot(CQD_final_set, aes(x=roa)) + geom_point(stat = "count")
+
+# noijy: Cut off above 6, cut below -13
+ggplot(CQD_final_set, aes(x=noijy)) + geom_point(stat = "count")
+
+# nimy: Cut above 9
+ggplot(CQD_final_set, aes(x=nimy)) + geom_point(stat = "count")
+
+# ntlnlsr: Cut above 9, cut below -4
+ggplot(CQD_final_set, aes(x=ntlnlsr)) + geom_point(stat = "count")
+
+# noniiay: cut below -4, cut above 20
+ggplot(CQD_final_set, aes(x=noniiay)) + geom_point(stat = "count")
+
+# eeffr: cut above 2600. cut below -1000
+ggplot(CQD_final_set, aes(x=eeffr)) + geom_point(stat = "count")
+
+# lnatresr: cut above 14
+ggplot(CQD_final_set, aes(x=lnatresr)) + geom_point(stat = "count")
+
+# nperfv: cut above 40, 
+ggplot(CQD_final_set, aes(x=nperfv)) + geom_point(stat = "count")
+
+# nclnlsr: cut above 31
+ggplot(CQD_final_set, aes(x=nclnlsr)) + geom_point(stat = "count")
+
+# idlncorr: cut above 2000, cut below 0
+ggplot(CQD_final_set, aes(x=idlncorr)) + geom_point(stat = "count")
+
+# intexpy: cut above 6.5
+ggplot(CQD_final_set, aes(x=intexpy)) + geom_point(stat = "count")
+```
+
+``` {r}
+# Removal of Outliers: Doing them individually to check as I go
+
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!rbc1aaj > 40)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!rbcrwaj > 65)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!eqv > 50)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!roe < -1000, !roe > 62)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!roa < -100, !roa > 100)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!noijy < -13, !noijy > 6)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!nimy > 9)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!ntlnlsr > 9, !ntlnlsr < -4)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!noniiay > 20, !noniiay < -4)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!eeffr > 2600, !eeffr < -1000)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!lnatresr > 14)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!nperfv > 40)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!nclnlsr > 31)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!idlncorr > 2000, !idlncorr < 0)
+
+CQD_final_set <- CQD_final_set %>%
+  filter(!intexpy > 6.5)
+
+table(CQD_final_set$solvency)
+```
+
+
+# Saving Clean Version of Data Set for Model Building
+```{r}
+write.csv(CQD_final_set, "C:/Users/amaut/OneDrive/Documents\\CQD_final_set.csv", row.names = FALSE)
+
+```
+
 
 
 # Descriptive Statistics:
 ```{r}
+# Summary Statistics Table
+CQD_final_set %>%
+  ungroup(cert) %>%
+  select(!cert & !solvency) %>%
+  st()
+dim(CQD_final_set)
+# Bank Failures graph
+cqd <- CQD_final_set %>%
+  mutate(date_1 = case_when(
+    date == "1Q2008" ~ "2008",
+    date == "2Q2008" ~ "2008",
+    date == "3Q2008" ~ "2008",
+    date == "4Q2008" ~ "2008",
+    date == "1Q2009" ~ "2009",
+    date == "2Q2009" ~ "2009",
+    date == "3Q2009" ~ "2009",
+    date == "4Q2009" ~ "2009",
+    date == "1Q2010" ~ "2010",
+    date == "2Q2010" ~ "2010",
+    date == "3Q2010" ~ "2010",
+    date == "4Q2010" ~ "2010",
+    date == "1Q2011" ~ "2011",
+    date == "2Q2011" ~ "2011",
+    date == "3Q2011" ~ "2011",
+    date == "4Q2011" ~ "2011",
+    date == "1Q2012" ~ "2012",
+    date == "2Q2012" ~ "2012",
+    date == "2Q2012" ~ "2012",
+    date == "3Q2012" ~ "2012",
+    date == "4Q2012" ~ "2012",
+    date == "1Q2013" ~ "2013",
+    date == "2Q2013" ~ "2013",
+    date == "3Q2013" ~ "2013",
+    date == "4Q2013" ~ "2013",
+    date == "1Q2014" ~ "2014",
+    date == "2Q2014" ~ "2014",
+    date == "3Q2014" ~ "2014",
+    date == "4Q2014" ~ "2014",
+))
+
+insolvent <- cqd %>%
+  filter( solvency == 1)
+solvent <- cqd %>%
+  filter( solvency == 0)
+# Graph of bank failures by year
+
+p <- ggplot(data = insolvent, aes(x = date_1)) +
+  geom_bar(aes(y = ..count..,), fill = "blue3") +
+  geom_text(stat='count', aes(label=..count..), vjust=-1) +
+  expand_limits(y = 200) +
+  labs(x = "Year", y = "Number of Failures", title = "Number of Bank Failures by year") + 
+  theme_classic() + 
+ theme(plot.title = element_text(hjust = 0.5, size=14, face= "bold", colour= "black"), axis.title.x = element_text(size=14, face="italic", colour = "black"), axis.title.y = element_text(size=14, face="italic", colour = "black"), axis.text.x = element_text(size=12, colour = "black"), axis.text.y = element_text(size=12,  colour = "black"))
+p
 
 
+# Number of unique Banks
+CQD_final_set %>%
+  group_by(cert) %>%
+  count()
+
+# Number of bank failures by year
+insolvent %>%
+  group_by(date_1) %>%
+  count()
+solvent %>%
+  filter(date_1 == 2010) %>%
+  group_by(date_1, cert) %>%
+  count()
+
+# Number of bank failures by Quater
+insolvent %>%
+  group_by(date) %>%
+  count()
 
 
 ```
 
-# Saving Clean Version of Data Set for Model Building
-```{r}
-write.csv(combined_quaterly_data_1, "C:/Users/amaut/OneDrive/Documents\\combined_quaterly_data_1.csv", row.names = FALSE)
 
-```
+
+
 
 
 
