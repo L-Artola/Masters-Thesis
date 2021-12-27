@@ -21,9 +21,11 @@ library(MLeval)
 library(DMwR)
 library(ROSE)
 library(MLmetrics)
-
-library(moments)
-
+library(mltools)
+library(smotefamily)
+#library(mlr)
+#library(moments)
+library(imbalance)
 library(doParallel)
 
 
@@ -150,6 +152,7 @@ TT <- TT %>%
 
 table(TT$solvency)
 table(outoftime$solvency)
+sum(is.na(TT))
 ```
 
 
@@ -181,7 +184,7 @@ test <- TT[-train_split,]
 
 ```
 
-# Caret Downsample Penalized Logistic Regression
+# Downsample Penalized Logistic Regression
 ```{r}
 # Following prior Research I used AUROC for selecting the most efficient parameterization
 #We employed the accuracy metric
@@ -215,7 +218,7 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
+head(down_train)
 
 # Probability Threshold
 probs <- seq(.1, 0.9, by = 0.02)
@@ -241,6 +244,7 @@ predictions_1 <- cbind(data.frame(train_preds=predictions,
                                 down_train$Class))
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$down_train.Class)
 cm
+F1_Score_macro(predictions_1$down_train.Class, predictions_1$train_preds)
 F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
 predictions <- predict(ds_log, down_train, type = "prob")
 test1 <- evalm(data.frame(predictions, down_train$Class), positive = "Insolvent")
@@ -250,7 +254,7 @@ test1 <- evalm(data.frame(predictions, down_train$Class), positive = "Insolvent"
 predictions <- predict(ds_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F_meas(predictions_1$train_preds, predictions_1$test.solvency, beta = 3)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -262,21 +266,33 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(ds_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency, beta = 3)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
 predictions <- predict(ds_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
+?mcc
+
+?F_meas
+
+```
+# OVer Sample With Replacement log reg
+```{r}
 
 
+
+
+
+
+?SMOTE
 
 
 ```
 
 
-# Smote Log reg
+# Smote Log reg, TRY 50, 100, 200, 300, 400, 500, N
 ```{r}
 # Need to play with Smote
 set.seed(111)
@@ -348,6 +364,7 @@ test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolven
 
 # Rose Log Reg
 ```{r}
+?ROSE
 set.seed(111)
 rose_train <- ROSE(solvency~., data = train)$data
 table(rose_train$solvency)
@@ -374,6 +391,22 @@ print(run.time)
 stopCluster(cl)
 
 
+# Probability Threshold
+probs <- seq(.1, 0.9, by = 0.02)
+ths <- thresholder(rose_log,
+                   threshold = probs,
+                   final = TRUE,
+                   statistics = "all")
+ths
+
+ggplot(ths, aes(x = prob_threshold, y = J)) + 
+  geom_point()
+
+
+ggplot(ths, aes(x = prob_threshold, y = Sensitivity)) + 
+  geom_point() + 
+  geom_point(aes(y = Specificity), col = "red")
+
 ######################
 # Confusion Matrix on Train Set
 predictions <- predict(rose_log, rose_train, type = "raw")
@@ -383,6 +416,7 @@ predictions_1 <- cbind(data.frame(train_preds=predictions,
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$rose_train.solvency)
 cm
 F_meas(predictions_1$train_preds, predictions_1$rose_train.solvency)
+F1_Score_macro(predictions_1$rose_train.solvency, predictions_1$train_preds)
 predictions <- predict(rose_log, rose_train, type = "prob")
 test1 <- evalm(data.frame(predictions, rose_train$solvency), positive = "Insolvent")
 
@@ -408,6 +442,858 @@ cm
 predictions <- predict(rose_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
+head(predictions_1)
+
+```
+
+
+# Adaptive Synthetic Sampling Approach (ADASYN)
+```{r}
+
+
+
+
+
+
+```
+
+
+
+# Smote Modeling
+###############################################################################################################################
+
+
+# Default
+#Smote No 200, Nu 200, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+# Testing Number over 200
+#Smote No 200, Nu 50, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 50)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+
+#Smote No 200, Nu 75, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 75)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+
+#Smote No 200, Nu 100, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+
+#Smote No 200, Nu 150, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 150)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+#Smote No 200, Nu 200, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 200)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+
+
+#Smote No 200, Nu 250, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 250)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+# Testing Number Over 100
+
+#Smote No 100, Nu 50, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 50, perc.over = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+#Smote No 100, Nu 75, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 75, perc.over = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+#Smote No 100, Nu 100, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 100, perc.over = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+#Smote No 100, Nu 150, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 150, perc.over = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
+```
+
+
+#Smote No 100, Nu 200, k =5
+```{r}
+set.seed(111)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 200, perc.over = 100)
+table(smote_train$solvency)
+
+
+start.time <- proc.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl, cores = 8)
+
+set.seed(111)
+smote_log = train(solvency ~.,  
+               data = smote_train,
+               method = "glmnet",
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
+               tuneLength = 10,
+               preProcess = c("center", "scale"),
+               family = "binomial",
+               metric = "ROC")
+
+
+
+stop.time <- proc.time()
+run.time <- stop.time - start.time
+print(run.time)
+stopCluster(cl)
+
+
+######################
+# Confusion Matrix on Train Set
+predictions <- predict(smote_log, smote_train, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                smote_train$solvency))
+F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
+F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+cm
+predictions <- predict(smote_log, smote_train, type = "prob")
+test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on Test Set
+predictions <- predict(smote_log, test, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                test$solvency))
+F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
+cm
+predictions <- predict(smote_log, test, type = "prob")
+test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
+
+# Confusion Matrix on out of time Set
+predictions <- predict(smote_log, outoftime, type = "raw")
+predictions_1 <- cbind(data.frame(train_preds=predictions, 
+                                outoftime$solvency))
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
+cm
+predictions <- predict(smote_log, outoftime, type = "prob")
+test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
 
 ```
 
@@ -417,9 +1303,7 @@ test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolven
 
 
 
-
-
-
+```
 
 
 

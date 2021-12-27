@@ -403,21 +403,21 @@ CQD_final_set <- combined_quaterly_data_1 %>%
 ```
 
 Total Risk Based capital Ratio	(rbc1aaj)
-Leverage ratio	(rbcrwaj)
-Equity capital to assets	(eqv)
-Net loans and leases to total assets	(lnlsntv)
-Return on equity	(roe)
-Return on assets	(roa)
-Net operating income to assets	(noijy)
-Net interest margin	(nimy)
-Net Charge-offs to loans	(ntlnlsr)
-Noninterest income to average assets	(noniiay)
-Efficency Ratio	(eeffr)
-Loan lease allowance to loans	(lnatresr)
-Noncurrent assets plus other real estate	(nperfv)
-Non-current loans to loans	(nclnlsr)
-net loans and leases to core deposits	(idlncorr)
-Cost of funding earning assets 	(intexpy)
+Leverage ratio	(rbcrwaj) *
+Equity capital to assets	(eqv) *
+Net loans and leases to total assets *	(lnlsntv)
+Return on equity	(roe) *
+Return on assets	(roa) *
+Net operating income to assets	(noijy) *
+Net interest margin	(nimy) *
+Net Charge-offs to loans	(ntlnlsr) *
+Noninterest income to average assets	(noniiay) *
+Efficency Ratio	(eeffr) *
+Loan lease allowance to loans	(lnatresr) *
+Noncurrent assets plus other real estate	(nperfv) *
+Non-current loans to loans	(nclnlsr) *
+net loans and leases to core deposits	(idlncorr) *
+Cost of funding earning assets 	(intexpy) *
 
 
 
