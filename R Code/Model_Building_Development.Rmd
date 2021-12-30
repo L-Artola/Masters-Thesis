@@ -23,6 +23,8 @@ library(ROSE)
 library(MLmetrics)
 library(mltools)
 library(smotefamily)
+library(pROC)
+library(ROCR)
 #library(mlr)
 #library(moments)
 library(imbalance)
@@ -160,12 +162,6 @@ sum(is.na(TT))
 #Cartet Train Test split
 ```{r}
 
-#Metrics
-# ROC AUC
-# Macro F-Meas (Only care about postives being picked correctly)
-# Balanced Accuracy ( Cares if negatives and postives picked correctly)
-# sensitivity TP/(TP/FN)
-# Specificity
 set.seed(111)
 
 # Reverse Factor Levels
@@ -183,6 +179,10 @@ test <- TT[-train_split,]
 
 
 ```
+
+
+
+
 
 # Downsample Penalized Logistic Regression
 ```{r}
@@ -218,7 +218,7 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-head(down_train)
+ds_log
 
 # Probability Threshold
 probs <- seq(.1, 0.9, by = 0.02)
@@ -236,8 +236,8 @@ ggplot(ths, aes(x = prob_threshold, y = Sensitivity)) +
   geom_point() + 
   geom_point(aes(y = Specificity), col = "red")
 
-
-######################
+# Metrics   ######################
+##################################
 # Confusion Matrix on Train Set
 predictions <- predict(ds_log, down_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -246,6 +246,11 @@ cm <- confusionMatrix(predictions_1$train_preds, predictions_1$down_train.Class)
 cm
 F1_Score_macro(predictions_1$down_train.Class, predictions_1$train_preds)
 F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
+# AUC & ROC Curve
+predictions <- predict(ds_log, down_train, type = "prob")[,2]
+ds_pr_auc <- prediction(predictions, down_train$Class)
+ds_auc_test <- performance(ds_pr_auc, measure = "auc")@y.values[[1]] 
+ds_auc_test
 predictions <- predict(ds_log, down_train, type = "prob")
 test1 <- evalm(data.frame(predictions, down_train$Class), positive = "Insolvent")
 
@@ -258,6 +263,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency, beta = 3)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(ds_log, test, type = "prob")[,2]
+ds_pr_auc <- prediction(predictions, test$solvency)
+ds_auc_test <- performance(ds_pr_auc, measure = "auc")@y.values[[1]] 
+ds_auc_test
 predictions <- predict(ds_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -270,50 +280,39 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency, beta = 3)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(ds_log, outoftime, type = "prob")[,2]
+ds_pr_auc <- prediction(predictions, outoftime$solvency)
+ds_auc_test <- performance(ds_pr_auc, measure = "auc")@y.values[[1]] 
+ds_auc_test
 predictions <- predict(ds_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
-?mcc
 
-?F_meas
 
 ```
 # OVer Sample With Replacement log reg
 ```{r}
-
-
-
-
-
-
-?SMOTE
-
-
-```
-
-
-# Smote Log reg, TRY 50, 100, 200, 300, 400, 500, N
-```{r}
-# Need to play with Smote
 set.seed(111)
-smote_train <- SMOTE(solvency~., data = train)
-table(smote_train$Class)
+up_train <- upSample(x = train[, -ncol(train)],
+                         y = train$solvency)
+table(up_train$Class)
 
 
 start.time <- proc.time()
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl, cores = 8)
 
+
 set.seed(111)
-smote_log = train(solvency ~.,  
-               data = smote_train,
+us_log = train(Class ~.,  
+               data = up_train,
                method = "glmnet",
-               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary), 
-               tuneLength = 10,
+               trControl = trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = twoClassSummary),
+               tuneLength = 25,
                preProcess = c("center", "scale"),
                family = "binomial",
                metric = "ROC")
-
 
 
 stop.time <- proc.time()
@@ -321,41 +320,59 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
-######################
+# Metrics   ######################
+##################################
 # Confusion Matrix on Train Set
-predictions <- predict(smote_log, smote_train, type = "raw")
+predictions <- predict(us_log, up_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
-                                smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
-cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
+                                up_train$Class))
+cm <- confusionMatrix(predictions_1$train_preds, predictions_1$up_train.Class)
 cm
-predictions <- predict(smote_log, smote_train, type = "prob")
-test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
+F1_Score_macro(predictions_1$down_train.Class, predictions_1$train_preds)
+F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
+# AUC & ROC Curve
+predictions <- predict(us_log, up_train, type = "prob")[,2]
+us_pr_auc <- prediction(predictions, up_train$Class)
+us_auc_test <- performance(us_pr_auc, measure = "auc")@y.values[[1]] 
+us_auc_test
+predictions <- predict(us_log, up_train, type = "prob")
+test1 <- evalm(data.frame(predictions, up_train$Class), positive = "Insolvent")
+head(predictions)
 
 
-# Confusion Matrix on Test Set
-predictions <- predict(smote_log, test, type = "raw")
+# Confusion Matrix on test Set
+predictions <- predict(us_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
+F_meas(predictions_1$train_preds, predictions_1$test.solvency, beta = 2)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
-predictions <- predict(smote_log, test, type = "prob")
+# AUC & ROC Curve
+predictions <- predict(us_log, test, type = "prob")[,2]
+us_pr_auc <- prediction(predictions, test$solvency)
+us_auc_test <- performance(us_pr_auc, measure = "auc")@y.values[[1]] 
+us_auc_test
+predictions <- predict(us_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
 
 # Confusion Matrix on out of time Set
-predictions <- predict(smote_log, outoftime, type = "raw")
+predictions <- predict(us_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
+F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency, beta = 2)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
-predictions <- predict(smote_log, outoftime, type = "prob")
+# AUC & ROC Curve
+predictions <- predict(us_log, outoftime, type = "prob")[,2]
+us_pr_auc <- prediction(predictions, outoftime$solvency)
+us_auc_test <- performance(us_pr_auc, measure = "auc")@y.values[[1]] 
+us_auc_test
+predictions <- predict(us_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
 
 
 ```
@@ -364,7 +381,7 @@ test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolven
 
 # Rose Log Reg
 ```{r}
-?ROSE
+
 set.seed(111)
 rose_train <- ROSE(solvency~., data = train)$data
 table(rose_train$solvency)
@@ -412,14 +429,19 @@ ggplot(ths, aes(x = prob_threshold, y = Sensitivity)) +
 predictions <- predict(rose_log, rose_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 rose_train$solvency))
-
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$rose_train.solvency)
 cm
 F_meas(predictions_1$train_preds, predictions_1$rose_train.solvency)
 F1_Score_macro(predictions_1$rose_train.solvency, predictions_1$train_preds)
+# AUC & ROC Curve
+predictions <- predict(rose_log, rose_train, type = "prob")[,1]
+rose_pr_auc <- prediction(predictions, rose_train$solvency)
+rose_auc_test <- performance(rose_pr_auc, measure = "auc")@y.values[[1]] 
+rose_auc_test
 predictions <- predict(rose_log, rose_train, type = "prob")
 test1 <- evalm(data.frame(predictions, rose_train$solvency), positive = "Insolvent")
 
+head(predictions)
 # Confusion Matrix on Test Set
 predictions <- predict(rose_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -428,8 +450,14 @@ F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(rose_log, test, type = "prob")[,1]
+rose_pr_auc <- prediction(predictions, test$solvency)
+rose_auc_test <- performance(rose_pr_auc, measure = "auc")@y.values[[1]] 
+rose_auc_test
 predictions <- predict(rose_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
+
 
 # Confusion Matrix on out of time Set
 predictions <- predict(rose_log, outoftime, type = "raw")
@@ -439,21 +467,15 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(rose_log, outoftime, type = "prob")[,1]
+rose_pr_auc <- prediction(predictions, outoftime$solvency)
+rose_auc_test <- performance(rose_pr_auc, measure = "auc")@y.values[[1]] 
+rose_auc_test
 predictions <- predict(rose_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
 head(predictions_1)
-
-```
-
-
-# Adaptive Synthetic Sampling Approach (ADASYN)
-```{r}
-
-
-
-
-
 
 ```
 
@@ -463,11 +485,11 @@ head(predictions_1)
 ###############################################################################################################################
 
 
-# Default
-#Smote No 200, Nu 200, k =5
+# Testing Number over 200
+#Smote No 200, Nu 25, k =5
 ```{r}
 set.seed(111)
-smote_train <- DMwR::SMOTE(solvency~., data = train)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 25)
 table(smote_train$solvency)
 
 
@@ -492,8 +514,8 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
-######################
+head(predictions)
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -502,6 +524,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -514,6 +541,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -526,14 +558,21 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
+
 
 
 ```
 
 
-# Testing Number over 200
+
 #Smote No 200, Nu 50, k =5
 ```{r}
 set.seed(111)
@@ -563,7 +602,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -572,6 +611,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -584,6 +628,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -596,9 +645,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -633,7 +686,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -642,6 +695,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -654,6 +712,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -666,9 +729,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -703,7 +770,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -712,6 +779,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -724,6 +796,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -736,9 +813,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -773,7 +854,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -782,6 +863,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -794,6 +880,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -806,9 +897,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -842,7 +937,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -851,6 +946,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -863,6 +963,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -875,6 +980,11 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
@@ -883,11 +993,12 @@ test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolven
 
 
 
+# Testing Number Over 100
 
-#Smote No 200, Nu 250, k =5
+#Smote No 100, Nu 25, k =5
 ```{r}
 set.seed(111)
-smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 250)
+smote_train <- DMwR::SMOTE(solvency~., data = train, perc.under = 25, perc.over = 100)
 table(smote_train$solvency)
 
 
@@ -912,8 +1023,7 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -922,6 +1032,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -934,6 +1049,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -946,14 +1066,17 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
 
-# Testing Number Over 100
 
 #Smote No 100, Nu 50, k =5
 ```{r}
@@ -983,8 +1106,9 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-
-######################
+smote_log$bestTune
+smote_log$results
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -993,6 +1117,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -1005,6 +1134,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -1017,8 +1151,14 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
+
 
 
 ```
@@ -1051,7 +1191,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -1060,6 +1200,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -1072,6 +1217,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -1084,6 +1234,11 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
@@ -1120,7 +1275,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -1129,6 +1284,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -1141,6 +1301,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -1153,9 +1318,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -1189,7 +1358,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -1198,6 +1367,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -1210,6 +1384,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -1222,9 +1401,13 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
 
 ```
 
@@ -1258,7 +1441,7 @@ print(run.time)
 stopCluster(cl)
 
 
-######################
+# Metrics   ######################
 # Confusion Matrix on Train Set
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
@@ -1267,6 +1450,11 @@ F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, smote_train, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, smote_train$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, smote_train, type = "prob")
 test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolvent")
 
@@ -1279,6 +1467,11 @@ F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, test, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, test$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, test, type = "prob")
 test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 
@@ -1291,19 +1484,31 @@ F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
+# AUC & ROC Curve
+predictions <- predict(smote_log, outoftime, type = "prob")[,2]
+smote_pr_auc <- prediction(predictions, outoftime$solvency)
+smote_auc_test <- performance(smote_pr_auc, measure = "auc")@y.values[[1]] 
+smote_auc_test
 predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
 
-```
-
-
-
-
-
-
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
