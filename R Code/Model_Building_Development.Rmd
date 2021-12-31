@@ -1,5 +1,5 @@
 ---
-title: "without lags"
+title: "Model Building & Development"
 output: html_document
 ---
 
@@ -23,10 +23,6 @@ library(ROSE)
 library(MLmetrics)
 library(mltools)
 library(smotefamily)
-library(pROC)
-library(ROCR)
-#library(mlr)
-#library(moments)
 library(imbalance)
 library(doParallel)
 
@@ -152,9 +148,7 @@ TT <- CQD_final_set[!grepl(c("2014|2013"), CQD_final_set$date),]
 TT <- TT %>%
         select(!c(date, cert))
 
-table(TT$solvency)
-table(outoftime$solvency)
-sum(is.na(TT))
+
 ```
 
 
@@ -218,23 +212,6 @@ run.time <- stop.time - start.time
 print(run.time)
 stopCluster(cl)
 
-ds_log
-
-# Probability Threshold
-probs <- seq(.1, 0.9, by = 0.02)
-ths <- thresholder(ds_log,
-                   threshold = probs,
-                   final = TRUE,
-                   statistics = "all")
-ths
-
-ggplot(ths, aes(x = prob_threshold, y = J)) + 
-  geom_point()
-
-
-ggplot(ths, aes(x = prob_threshold, y = Sensitivity)) + 
-  geom_point() + 
-  geom_point(aes(y = Specificity), col = "red")
 
 # Metrics   ######################
 ##################################
@@ -245,7 +222,6 @@ predictions_1 <- cbind(data.frame(train_preds=predictions,
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$down_train.Class)
 cm
 F1_Score_macro(predictions_1$down_train.Class, predictions_1$train_preds)
-F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
 # AUC & ROC Curve
 predictions <- predict(ds_log, down_train, type = "prob")[,2]
 ds_pr_auc <- prediction(predictions, down_train$Class)
@@ -259,7 +235,6 @@ test1 <- evalm(data.frame(predictions, down_train$Class), positive = "Insolvent"
 predictions <- predict(ds_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency, beta = 3)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -276,7 +251,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(ds_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency, beta = 3)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -329,7 +303,6 @@ predictions_1 <- cbind(data.frame(train_preds=predictions,
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$up_train.Class)
 cm
 F1_Score_macro(predictions_1$down_train.Class, predictions_1$train_preds)
-F_meas(predictions_1$train_preds, predictions_1$down_train.Class)
 # AUC & ROC Curve
 predictions <- predict(us_log, up_train, type = "prob")[,2]
 us_pr_auc <- prediction(predictions, up_train$Class)
@@ -337,14 +310,13 @@ us_auc_test <- performance(us_pr_auc, measure = "auc")@y.values[[1]]
 us_auc_test
 predictions <- predict(us_log, up_train, type = "prob")
 test1 <- evalm(data.frame(predictions, up_train$Class), positive = "Insolvent")
-head(predictions)
+
 
 
 # Confusion Matrix on test Set
 predictions <- predict(us_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency, beta = 2)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -361,7 +333,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(us_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency, beta = 2)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -384,7 +355,7 @@ test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolven
 
 set.seed(111)
 rose_train <- ROSE(solvency~., data = train)$data
-table(rose_train$solvency)
+
 
 start.time <- proc.time()
 cl <- makePSOCKcluster(8)
@@ -408,22 +379,6 @@ print(run.time)
 stopCluster(cl)
 
 
-# Probability Threshold
-probs <- seq(.1, 0.9, by = 0.02)
-ths <- thresholder(rose_log,
-                   threshold = probs,
-                   final = TRUE,
-                   statistics = "all")
-ths
-
-ggplot(ths, aes(x = prob_threshold, y = J)) + 
-  geom_point()
-
-
-ggplot(ths, aes(x = prob_threshold, y = Sensitivity)) + 
-  geom_point() + 
-  geom_point(aes(y = Specificity), col = "red")
-
 ######################
 # Confusion Matrix on Train Set
 predictions <- predict(rose_log, rose_train, type = "raw")
@@ -431,7 +386,6 @@ predictions_1 <- cbind(data.frame(train_preds=predictions,
                                 rose_train$solvency))
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$rose_train.solvency)
 cm
-F_meas(predictions_1$train_preds, predictions_1$rose_train.solvency)
 F1_Score_macro(predictions_1$rose_train.solvency, predictions_1$train_preds)
 # AUC & ROC Curve
 predictions <- predict(rose_log, rose_train, type = "prob")[,1]
@@ -447,7 +401,6 @@ predictions <- predict(rose_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
 # AUC & ROC Curve
@@ -463,7 +416,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(rose_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -474,8 +426,6 @@ rose_auc_test <- performance(rose_pr_auc, measure = "auc")@y.values[[1]]
 rose_auc_test
 predictions <- predict(rose_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
-
-head(predictions_1)
 
 ```
 
@@ -520,7 +470,6 @@ head(predictions)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -537,7 +486,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -554,7 +502,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -607,7 +554,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -624,7 +570,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -641,7 +586,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -691,7 +635,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -708,7 +651,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -725,7 +667,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -775,7 +716,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -792,7 +732,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -809,7 +748,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -859,7 +797,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -876,7 +813,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -893,7 +829,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -942,7 +877,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -959,7 +893,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -976,7 +909,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1028,7 +960,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1045,7 +976,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1062,7 +992,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1113,7 +1042,6 @@ smote_log$results
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1130,7 +1058,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1147,7 +1074,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1196,7 +1122,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1213,7 +1138,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1230,7 +1154,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1280,7 +1203,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1297,7 +1219,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1314,7 +1235,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1363,7 +1283,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1380,7 +1299,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1397,7 +1315,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1446,7 +1363,6 @@ stopCluster(cl)
 predictions <- predict(smote_log, smote_train, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 smote_train$solvency))
-F_meas(predictions_1$train_preds, predictions_1$smote_train.solvency)
 F1_Score_macro(predictions_1$smote_train.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$smote_train.solvency)
 cm
@@ -1463,7 +1379,6 @@ test1 <- evalm(data.frame(predictions, smote_train$solvency), positive = "Insolv
 predictions <- predict(smote_log, test, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 test$solvency))
-F_meas(predictions_1$train_preds, predictions_1$test.solvency)
 F1_Score_macro(predictions_1$test.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$test.solvency)
 cm
@@ -1480,7 +1395,6 @@ test1 <- evalm(data.frame(predictions, test$solvency), positive = "Insolvent")
 predictions <- predict(smote_log, outoftime, type = "raw")
 predictions_1 <- cbind(data.frame(train_preds=predictions, 
                                 outoftime$solvency))
-F_meas(predictions_1$train_preds, predictions_1$outoftime.solvency)
 F1_Score_macro(predictions_1$outoftime.solvency, predictions_1$train_preds)
 cm <- confusionMatrix(predictions_1$train_preds, predictions_1$outoftime.solvency)
 cm
@@ -1493,6 +1407,22 @@ predictions <- predict(smote_log, outoftime, type = "prob")
 test1 <- evalm(data.frame(predictions, outoftime$solvency), positive = "Insolvent")
 
 
+
+```
+
+# Data Portion for submission
+```{r}
+submission_solvent <- CQD_final_set %>%
+  filter(solvency == 1)
+
+subimission_insolvent <- CQD_final_set %>%
+  filter(solvency == 0) %>%
+  sample_n(10000)
+
+# submission data
+submission_data <- rbind(submission_solvent, subimission_insolvent)
+
+write.csv(submission_data, "C:/Users/amaut/OneDrive/Documents\\submission_data.csv", row.names = FALSE)
 
 ```
 

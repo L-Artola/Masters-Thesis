@@ -1,5 +1,5 @@
 ---
-title: "Please Don't be True"
+title: "Data Cleaning & EDA"
 output: html_document
 ---
 
@@ -441,8 +441,6 @@ CQD_final_set <- CQD_final_set %>%
         group_by(cert) %>%
         na.omit()
 
-dim(CQD_final_set)
-220113-215004
 ```
 
 
@@ -459,7 +457,7 @@ corrplot( corr.d, type = "upper", diag = FALSE )
 ```
 
 
-# Graphing and minimizing outliers by removal with primary objective to keep all insolvent banks in sample
+# Graphing and minimizing outliers by removal with primary objective to keep all insolvent banks in sample. Cut off points were detirmeined by examing the outliers and cutting off the extremas without eliminating insolvent banks
 ```{r}
 
 # Graphing Distributions
